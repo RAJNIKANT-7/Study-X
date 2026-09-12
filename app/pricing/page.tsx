@@ -1,0 +1,3 @@
+"use client";
+import Link from "next/link";
+export default function Page(){return <main className="achievements-page"><div className="page-heading"><h1>Pricing</h1><p>Choose the Study X plan that fits your workflow.</p></div><div className="glass empty-panel"><p>This Study X section is ready for your workspace.</p><div className="quick-links"><Link href="/timer">Open Timer</Link><Link href="/achievements">View Achievements</Link></div></div></main>}
