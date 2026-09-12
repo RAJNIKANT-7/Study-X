@@ -81,40 +81,43 @@ function Timer(){
    }catch{}
  }
 
- useEffect(()=>{timerStateRef.current={...timerStateRef.current,run,mode,total,startedAt:startedAtRef.current,elapsedBefore:Math.max(0,total-left)};if(run){try{sessionStorage.setItem("study-x-timer",JSON.stringify({run:true,mode,total,startedAt:startedAtRef.current||Date.now(),elapsedBefore:mode==="Stopwatch"?left:Math.max(0,total-left)}))}catch{}}
-     const now=Date.now();
-     if(!startedAtRef.current)startedAtRef.current=now;
-     if(!lastTickRef.current)lastTickRef.current=now;
+ useEffect(()=>{
+   timerStateRef.current={...timerStateRef.current,run,mode,total,startedAt:startedAtRef.current,elapsedBefore:Math.max(0,total-left)};
+   if(run){
+     if(!startedAtRef.current)startedAtRef.current=Date.now();
+     if(!lastTickRef.current)lastTickRef.current=Date.now();
      lastRunRef.current=true;
-     const id=setInterval(()=>{applyElapsed();setLeft(v=>{
-       if(mode==="Stopwatch")return v+1;
-       const elapsed=Math.max(0,Math.floor((Date.now()-(startedAtRef.current||Date.now()))/1000));
-       const next=Math.max(0,total-elapsed);
-       if(next===0){
-         try{const key="study-x-progress";const d=JSON.parse(localStorage.getItem(key)||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");d.sessions=(d.sessions||0)+1;localStorage.setItem(key,JSON.stringify(d));void persistProgress(d)}catch{}
-         setRun(false);
-       }
-       return next;
-     })},250);
+     try{sessionStorage.setItem("study-x-timer",JSON.stringify({run:true,mode,total,startedAt:startedAtRef.current,elapsedBefore:mode==="Stopwatch"?left:Math.max(0,total-left)}))}catch{}
+     const id=setInterval(()=>{
+       applyElapsed();
+       setLeft(v=>{
+         if(mode==="Stopwatch"){
+           return Math.max(0,v+1);
+         }
+         const elapsed=Math.max(0,Math.floor((Date.now()-(startedAtRef.current||Date.now()))/1000));
+         const next=Math.max(0,total-elapsed);
+         if(next===0){
+           try{
+             const key="study-x-progress";
+             const d=JSON.parse(localStorage.getItem(key)||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");
+             d.sessions=(d.sessions||0)+1;
+             localStorage.setItem(key,JSON.stringify(d));
+             void persistProgress(d);
+           }catch{}
+           try{sessionStorage.removeItem("study-x-timer")}catch{}
+           setRun(false);
+         }
+         return next;
+       });
+     },250);
      return()=>clearInterval(id);
    }
    if(lastRunRef.current){
      applyElapsed();
      lastRunRef.current=false;
-     startedAtRef.current=null;
-     lastTickRef.current=null;
    }
  },[run,mode,total]);
 
- useEffect(()=>{
-   const onVisibility=()=>{if(document.visibilityState==="visible"){applyElapsed();if(run){const now=Date.now();if(startedAtRef.current){const elapsed=Math.max(0,Math.floor((now-startedAtRef.current)/1000));setLeft(mode==="Stopwatch"?elapsed:Math.max(0,total-elapsed));}}}};
-   const onPageShow=()=>{applyElapsed();if(run){const now=Date.now();if(startedAtRef.current)setLeft(mode==="Stopwatch"?Math.max(0,Math.floor((now-startedAtRef.current)/1000)):Math.max(0,total-Math.floor((now-startedAtRef.current)/1000)));}};
-   document.addEventListener("visibilitychange",onVisibility);
-   window.addEventListener("pageshow",onPageShow);
-   return()=>{document.removeEventListener("visibilitychange",onVisibility);window.removeEventListener("pageshow",onPageShow)};
- },[run,mode,total]);
-
- useEffect(()=>{const id=setInterval(()=>{if(run)applyElapsed();},1000);return()=>clearInterval(id)},[run]);
 
  const pct=mode==="Stopwatch"?100:total?((total-left)/total)*100:0;
  function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
