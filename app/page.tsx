@@ -40,7 +40,8 @@ function Timer(){
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
  function apply(){const n=(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0);if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
  function toggle(){if(mode==="Stopwatch"){setRun(v=>!v);return}if(!total)return;if(!left)setLeft(total);setRun(v=>!v)}
- function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}\n function recordStudySecond(){try{const key="study-x-progress";const raw=localStorage.getItem(key);const data=raw?JSON.parse(raw):{seconds:0,sessions:0,daily:{}};data.seconds=(data.seconds||0)+1;const day=new Date().toISOString().slice(0,10);data.daily=data.daily||{};data.daily[day]=(data.daily[day]||0)+1;localStorage.setItem(key,JSON.stringify(data))}catch{}}
+ function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
+  function recordStudySecond(){try{const key="study-x-progress";const raw=localStorage.getItem(key);const data=raw?JSON.parse(raw):{seconds:0,sessions:0,daily:{}};data.seconds=(data.seconds||0)+1;const day=new Date().toISOString().slice(0,10);data.daily=data.daily||{};data.daily[day]=(data.daily[day]||0)+1;localStorage.setItem(key,JSON.stringify(data))}catch{}}
  const done=tasks.filter(t=>t.done).length;
  return <main className="timer-page">
   <div className="timer-intro"><span className="section-kicker">FOCUS / 01</span><h1>Make time for what matters.</h1><p>A quiet workspace for deliberate study.</p></div>
