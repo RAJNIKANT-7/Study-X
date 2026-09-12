@@ -192,6 +192,14 @@ function Progress(){
   );
 }
 
+
+function Leaderboard(){
+ const [rows,setRows]=useState<{username:string;seconds:number}[]>([]);
+ const [loading,setLoading]=useState(true);
+ useEffect(()=>{fetch("/api/leaderboard").then(r=>r.json()).then(x=>setRows(Array.isArray(x.rows)?x.rows:[])).catch(()=>setRows([])).finally(()=>setLoading(false));},[]);
+ const fmtTime=(s:number)=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+"h "+m+"m"};
+ return <main className="progress-page leaderboard-page"><div className="progress-heading"><div><span className="section-kicker">LEADERBOARD / 04</span><h1>Study together. Rise together.</h1><p>Public study time rankings from registered Study X users.</p></div><div className="progress-live"><i/> LIVE RANKINGS</div></div><section className="leaderboard-panel glass-panel"><div className="detail-head"><div><span className="section-kicker">GLOBAL</span><h2>Top scholars</h2></div><span>{rows.length} USERS</span></div>{loading?<div className="leaderboard-empty">Loading rankings...</div>:rows.length===0?<div className="leaderboard-empty">No study data yet. Complete a session to enter the leaderboard.</div>:<div className="leaderboard-list">{rows.map((r,i)=><div className={"leader-row "+(i<3?"top-rank":"")} key={r.username}><strong>#{i+1}</strong><div><b>@{r.username}</b><small>FOCUSED STUDY TIME</small></div><span>{fmtTime(r.seconds)}</span></div>)}</div>}</section></main>
+}
 export default function Page(){
  const path=usePathname(),router=useRouter(),[loginOpen,setLoginOpen]=useState(false),[account,setAccount]=useState<string|null>(null),isAch=path==="/achievements",isProgress=path==="/progress",isSyllabus=path==="/syllabus";
  useEffect(()=>{const f=()=>fetch("/api/auth").then(r=>r.json()).then(x=>setAccount(x.loggedIn?x.username:null)).catch(()=>{});f();window.addEventListener("studyx-login",f);window.addEventListener("studyx-logout",f);return()=>{window.removeEventListener("studyx-login",f);window.removeEventListener("studyx-logout",f)}},[]);
