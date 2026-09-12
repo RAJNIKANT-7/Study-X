@@ -52,8 +52,21 @@ function Timer(){
      }
    }catch{}
  },[]);
- useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok)return;const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
- useEffect(()=>{try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}},[tasks]);
+ const tasksHydratedRef=useRef(false);
+ const tasksSaveTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+ useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth",{cache:"no-store"});const auth=await a.json();if(!auth.loggedIn){tasksHydratedRef.current=true;return}const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok){tasksHydratedRef.current=true;return}const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}tasksHydratedRef.current=true}catch{tasksHydratedRef.current=true}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
+ useEffect(()=>{
+   try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}
+   if(!tasksHydratedRef.current)return;
+   if(tasksSaveTimerRef.current)clearTimeout(tasksSaveTimerRef.current);
+   tasksSaveTimerRef.current=setTimeout(async()=>{
+     try{
+       const a=await fetch("/api/auth",{cache:"no-store"});const auth=await a.json();if(!auth.loggedIn)return;
+       await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tasks})});
+     }catch{}
+   },350);
+   return()=>{if(tasksSaveTimerRef.current)clearTimeout(tasksSaveTimerRef.current)}
+ },[tasks]);
 
  async function persistProgress(data:any){try{localStorage.setItem("study-x-progress",JSON.stringify(data));const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:data,tasks})})}catch{}}
 
