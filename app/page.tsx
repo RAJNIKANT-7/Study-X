@@ -136,10 +136,27 @@ function Timer(){
 
 
  const pct=mode==="Stopwatch"?100:total?((total-left)/total)*100:0;
- function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
- function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
- function apply(){const n=Math.min(20*3600,(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0));if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
- function toggle(){if(mode==="Stopwatch"){if(!run){startedAtRef.current=Date.now()-(left*1000);lastTickRef.current=Date.now();}setRun(v=>!v);return}if(!total)return;if(!left){setLeft(total);startedAtRef.current=Date.now();lastTickRef.current=Date.now();}else if(!run){const elapsed=total-left;startedAtRef.current=Date.now()-elapsed*1000;lastTickRef.current=Date.now();}setRun(v=>!v)}
+ function choose(m:Mode){if(run){applyElapsed();void clearActiveTimerCloud();}setRun(false);startedAtRef.current=null;lastTickRef.current=null;setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
+ function preset(n:number){if(run){applyElapsed();void clearActiveTimerCloud();}setRun(false);startedAtRef.current=null;lastTickRef.current=null;setMode("Timer");setTotal(n*60);setLeft(n*60)}
+ function apply(){const n=Math.min(20*3600,(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0));if(n){if(run){applyElapsed();void clearActiveTimerCloud();}setRun(false);startedAtRef.current=null;lastTickRef.current=null;setMode("Timer");setTotal(n);setLeft(n)}}
+ function toggle(){
+   if(run){
+     applyElapsed();
+     setRun(false);
+     startedAtRef.current=null;
+     lastTickRef.current=null;
+     try{sessionStorage.removeItem("study-x-timer")}catch{}
+     void clearActiveTimerCloud();
+     return;
+   }
+   if(mode==="Stopwatch"){
+     startedAtRef.current=Date.now()-(left*1000);lastTickRef.current=Date.now();setRun(true);return;
+   }
+   if(!total)return;
+   if(!left){setLeft(total);startedAtRef.current=Date.now();lastTickRef.current=Date.now();}
+   else {const elapsed=total-left;startedAtRef.current=Date.now()-elapsed*1000;lastTickRef.current=Date.now();}
+   setRun(true);
+ }
  function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;try{sessionStorage.removeItem("study-x-timer")}catch{}setLeft(mode==="Stopwatch"?0:total);void clearActiveTimerCloud()}
  function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
  async function clearActiveTimerCloud(){try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({activeTimer:null})})}catch{}}
