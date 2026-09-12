@@ -88,3 +88,19 @@ body{font-family:"DM Sans",Inter,ui-sans-serif,system-ui,sans-serif}
 
 @media(max-width:900px){.timer-main-grid{grid-template-columns:1fr}.task-panel{margin:18px 0 0}.timer-main-grid .clock-card{margin-top:28px}}
 @media(max-width:700px){.timer-main-grid{width:calc(100vw - 24px)}.task-panel{padding:18px;border-radius:20px}.task-heading h2{font-size:21px}}
+
+/* Final balanced desktop composition */
+.timer-page{width:100%;padding-left:24px;padding-right:24px}
+.timer-intro{width:min(1120px,100%);margin-left:auto;margin-right:auto}
+.mode-tabs{margin-left:auto;margin-right:auto}
+.duration-editor{width:min(1120px,100%);margin-left:auto;margin-right:auto;padding:16px 22px;border-radius:20px}
+.timer-main-grid{width:min(1120px,100%);grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:stretch}
+.timer-primary{display:flex;flex-direction:column;min-width:0}
+.timer-main-grid .clock-card{margin:16px 0 18px;min-height:265px;display:flex;flex-direction:column;justify-content:center}
+.timer-main-grid .controls{margin-top:auto}
+.task-panel{margin:16px 0 0;min-height:405px;height:calc(100% - 16px);box-sizing:border-box}
+.task-heading h2{font-size:28px}
+.task-item{min-height:52px}
+.timer-meta{width:min(1120px,100%);justify-content:center}
+@media(max-width:900px){.timer-main-grid{grid-template-columns:1fr;gap:0}.task-panel{height:auto;min-height:0;margin:22px 0 0}.timer-main-grid .clock-card{margin-top:28px}.timer-main-grid .controls{margin-top:0}}
+@media(max-width:700px){.timer-page{padding-left:14px;padding-right:14px}.duration-editor{width:100%}.timer-main-grid{width:100%}.task-panel{width:100%}}
