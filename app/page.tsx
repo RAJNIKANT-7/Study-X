@@ -34,13 +34,13 @@ function Timer(){
  const ref=useRef<ReturnType<typeof setInterval>|null>(null);
  useEffect(()=>{try{const saved=localStorage.getItem("study-x-tasks");if(saved)setTasks(JSON.parse(saved))}catch{}},[]);
  useEffect(()=>{try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}},[tasks]);
- useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1}),1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
+ useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>{recordStudySecond();setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1});},1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
  const pct=mode==="Stopwatch"?100:total?((total-left)/total)*100:0;
  function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
  function apply(){const n=(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0);if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
  function toggle(){if(mode==="Stopwatch"){setRun(v=>!v);return}if(!total)return;if(!left)setLeft(total);setRun(v=>!v)}
- function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
+ function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}\n function recordStudySecond(){try{const key="study-x-progress";const raw=localStorage.getItem(key);const data=raw?JSON.parse(raw):{seconds:0,sessions:0,daily:{}};data.seconds=(data.seconds||0)+1;const day=new Date().toISOString().slice(0,10);data.daily=data.daily||{};data.daily[day]=(data.daily[day]||0)+1;localStorage.setItem(key,JSON.stringify(data))}catch{}}
  const done=tasks.filter(t=>t.done).length;
  return <main className="timer-page">
   <div className="timer-intro"><span className="section-kicker">FOCUS / 01</span><h1>Make time for what matters.</h1><p>A quiet workspace for deliberate study.</p></div>
@@ -66,9 +66,22 @@ function Achievements(){
 }
 
 export default function Page(){
- const path=usePathname(),router=useRouter(),isAch=path==="/achievements";
+ const path=usePathname(),router=useRouter(),isAch=path==="/achievements",isProgress=path==="/progress";
  const nav=["Timer","Progress","Leaderboard","Achievements","AI Helper","Pricing"],routes:Record<string,string>={Timer:"/timer",Progress:"/progress",Leaderboard:"/leaderboard",Achievements:"/achievements","AI Helper":"/ai-helper",Pricing:"/pricing"};
  return <div className="study-x-app"><div className="grain"/><div className="ambient-glow"/>
- <nav className="top-nav"><button className="brand" onClick={()=>router.push("/timer")}><span className="brand-mark">SX</span><b>Study<span> X</span></b></button><div className="nav-pill glass-pill">{nav.map(n=><button key={n} onClick={()=>router.push(routes[n])} className={(n==="Achievements" && isAch) || (n==="Timer" && path==="/timer") ? "active-pill" : ""}>{n}</button>)}</div><div className="nav-right"><button className="nav-action" aria-label="Notifications">•••</button><button className="avatar">S</button></div></nav>
- <div className="content">{isAch?<Achievements/>:<Timer/>}</div><div className="status-bar"><span><i/> Systems normal</span><span>Study X · 2026</span></div></div>
+ <nav className="top-nav"><button className="brand" onClick={()=>router.push("/timer")}><span className="brand-mark">SX</span><b>Study<span> X</span></b></button><div className="nav-pill glass-pill">{nav.map(n=><button key={n} onClick={()=>router.push(routes[n])} className={(n==="Achievements" && isAch) || (n==="Progress" && isProgress) || (n==="Timer" && path==="/timer") ? "active-pill" : ""}>{n}</button>)}</div><div className="nav-right"><button className="nav-action" aria-label="Notifications">•••</button><button className="avatar">S</button></div></nav>
+ <div className="content">{isAch?<Achievements/>:isProgress?<Progress/>:<Timer/>}</div><div className="status-bar"><span><i/> Systems normal</span><span>Study X · 2026</span></div></div>
+function Progress(){
+ const [seconds,setSeconds]=useState(0),[sessions,setSessions]=useState(0);
+ useEffect(()=>{const load=()=>{try{const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");setSeconds(d.seconds||0);setSessions(d.sessions||0)}catch{}};load();const id=setInterval(load,1000);return()=>clearInterval(id)},[]);
+ const hours=Math.floor(seconds/3600),mins=Math.floor(seconds%3600/60),secs=seconds%60;
+ const display=hours>0?hours+"h "+mins+"m":mins>0?mins+"m "+secs+"s":secs+"s";
+ const goal=hours/4*100;
+ return <main className="progress-page"><div className="progress-heading"><div><span className="section-kicker">PROGRESS / 02</span><h1>Your study progress.</h1><p>Every focused minute is counted and saved on this device.</p></div><div className="progress-live"><i/> LIVE TRACKING</div></div>
+ <section className="progress-hero glass-panel"><div><span className="progress-label">TOTAL STUDY TIME</span><strong>{display}</strong><p>You have studied for <b>{hours} hour{hours===1?"":"s"}</b> in total.</p></div><div className="progress-orb"><span>{Math.min(100,Math.round(goal))}%</span><small>4h daily goal</small></div></section>
+ <div className="progress-stats"><article className="glass-panel"><span>HOURS STUDIED</span><b>{hours}</b><small>total focused hours</small></article><article className="glass-panel"><span>FOCUSED MINUTES</span><b>{Math.floor(seconds/60).toLocaleString()}</b><small>minutes accumulated</small></article><article className="glass-panel"><span>SESSIONS</span><b>{sessions}</b><small>completed sessions</small></article></div>
+ <section className="progress-detail glass-panel"><div className="detail-head"><div><span className="section-kicker">CONSISTENCY</span><h2>Your progress</h2></div><span>{Math.min(100,Math.round(goal))}% of 4h goal</span></div><div className="big-progress-track"><div style={{width:Math.min(100,goal)+"%"}}/></div><div className="detail-foot"><span>0h</span><b>{display}</b><span>4h</span></div></section>
+ </main>
+}
+
 }
