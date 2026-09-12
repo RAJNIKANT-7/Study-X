@@ -162,10 +162,3 @@ p{font-size:15px;line-height:1.55}.section-kicker,.progress-label{font-weight:80
 @media(max-width:700px){.top-nav{height:auto;min-height:64px;padding:10px 12px;flex-wrap:wrap;gap:9px}.top-nav .brand{flex:0 0 auto}.nav-right{margin-left:auto}.nav-pill{order:3;width:100%;overflow-x:auto;justify-content:flex-start;border-radius:14px;padding:4px;scrollbar-width:none}.nav-pill::-webkit-scrollbar{display:none}.nav-pill button{flex:0 0 auto;padding:9px 14px;font-size:10px;white-space:nowrap}.content{width:100%;overflow:hidden}}
 
 @media(max-width:700px){.top-nav{display:grid!important;grid-template-columns:1fr auto!important;grid-template-areas:"brand actions" "tabs tabs"!important;align-items:center!important;width:100%!important;box-sizing:border-box!important}.top-nav .brand{grid-area:brand!important}.top-nav .nav-right{grid-area:actions!important;margin:0!important}.top-nav .nav-pill{grid-area:tabs!important;display:flex!important;width:100%!important;min-width:0!important;max-width:none!important;overflow-x:auto!important;overflow-y:hidden!important;flex-wrap:nowrap!important;justify-content:flex-start!important;box-sizing:border-box!important}.top-nav .nav-pill button{display:block!important;visibility:visible!important;opacity:1!important;flex:0 0 auto!important}.content{width:100%!important}}
-
-/* Sequence name visibility: all pathways */
-.seq-node{width:100%;box-sizing:border-box;grid-template-columns:72px minmax(180px,1fr) auto}
-.seq-name{min-width:0;width:100%;overflow:visible}
-.seq-name b{display:block!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;word-break:normal!important;font-size:14px!important;line-height:1.25!important}
-.seq-name small{display:block!important}
-@media(max-width:760px){.seq-node{grid-template-columns:52px minmax(0,1fr) auto}.seq-name b{font-size:13px!important}}
