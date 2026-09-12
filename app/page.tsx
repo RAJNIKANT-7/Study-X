@@ -127,24 +127,33 @@ function Progress(){
   const [showPicker,setShowPicker]=useState(false);
 
   useEffect(()=>{
-    const load=()=>{
+    let alive=true;
+    const load=async()=>{
       try{
         const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
-        setSeconds(d.seconds||0);
-        setSessions(d.sessions||0);
-        setSelected(d.pathway||null);
-        const saved=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");
-        setTasks(Array.isArray(saved)?saved:[]);
+        if(alive){setSeconds(d.seconds||0);setSessions(d.sessions||0);setSelected(d.pathway||null);}
+        const a=await fetch("/api/auth",{cache:"no-store"});
+        if((await a.json()).loggedIn){
+          const r=await fetch("/api/sync",{cache:"no-store"});
+          if(r.ok){const x=await r.json();if(x.data?.progress){localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(alive){setSeconds(x.data.progress.seconds||0);setSessions(x.data.progress.sessions||0);setSelected(x.data.progress.pathway||null)}}if(Array.isArray(x.data?.tasks)){localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks));if(alive)setTasks(x.data.tasks);return;}}
+        }
+        const saved=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");if(alive)setTasks(Array.isArray(saved)?saved:[]);
       }catch{}
     };
     load();
-    const id=setInterval(load,1000);
-    return()=>clearInterval(id);
+    const id=setInterval(load,3000);
+    return()=>{alive=false;clearInterval(id)};
   },[]);
 
-  const saveTasks=(next:{id:number;text:string;done:boolean}[])=>{
+  const saveTasks=async(next:{id:number;text:string;done:boolean}[])=>{
     setTasks(next);
     localStorage.setItem("study-x-tasks",JSON.stringify(next));
+    try{
+      const a=await fetch("/api/auth",{cache:"no-store"});
+      if(!(await a.json()).loggedIn)return;
+      const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
+      await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks:next})});
+    }catch{}
   };
 
   const addTask=()=>{
