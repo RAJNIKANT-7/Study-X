@@ -100,30 +100,96 @@ function LoginPanel({onClose}:{onClose:()=>void}){const [user,setUser]=useState(
  return <div className="login-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="login-card glass-panel">{logged?<><span className="section-kicker">ACCOUNT / ACTIVE</span><h2>Welcome back.</h2><p className="login-user">@{name}</p><p>Your study progress is synced to your account and can follow you across devices.</p><button className="login-primary" onClick={onClose}>Continue to Study X</button><button className="login-secondary" onClick={logout}>Sign out</button></>:<><span className="section-kicker">STUDY X / ACCOUNT</span><h2>Sign in.</h2><p>Use the username and password issued for your Study X account.</p><label>USERNAME<input autoComplete="username" value={user} onChange={e=>setUser(e.target.value)} placeholder="Your username"/></label><label>PASSWORD<input autoComplete="current-password" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Your password"/></label>{error&&<div className="login-error">{error}</div>}<button className="login-primary" disabled={busy||!user||!pass} onClick={login}>{busy?"Signing in…":"Sign in"}</button><button className="login-secondary" onClick={onClose}>Cancel</button></>}</section></div>}
 
 function Progress(){
- const pathways=[["Fool","Seer"],["Door","Apprentice"],["Error","Marauder"],["Visionary","Spectator"],["Sun","Bard"],["Tyrant","Sailor"],["White Tower","Reader"],["Darkness","Sleepless"],["Death","Corpse Collector"]];
- const [seconds,setSeconds]=useState(0),[sessions,setSessions]=useState(0),[tasks,setTasks]=useState<{id:number;text:string;done:boolean}[]>([]),[taskText,setTaskText]=useState("");
- const [selected,setSelected]=useState<string|null>(null),[showPicker,setShowPicker]=useState(false);
- useEffect(()=>{const load=()=>{try{const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");setSeconds(d.seconds||0);setSessions(d.sessions||0);setSelected(d.pathway||null);const t=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");setTasks(Array.isArray(t)?t:[])}catch{}};load();const id=setInterval(load,1000);return()=>clearInterval(id)},[]);
- useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync");if(!r.ok)return;const x=await r.json();if(x.data?.progress){localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));setSeconds(x.data.progress.seconds||0);setSessions(x.data.progress.sessions||0);setSelected(x.data.progress.pathway||null)}if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
- useEffect(()=>{localStorage.setItem("study-x-tasks",JSON.stringify(tasks));const push=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}};push()},[tasks]);
- const addTask=()=>{const text=taskText.trim();if(!text)return;setTasks(t=>[...t,{id:Date.now(),text,done:false}]);setTaskText("")};
- const choosePath=(name:string)=>{const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");d.pathway=name;d.sequence=9;localStorage.setItem("study-x-progress",JSON.stringify(d));setSelected(name);setShowPicker(false)};
- const hours=seconds/3600, wholeHours=Math.floor(hours),mins=Math.floor(seconds%3600/60),secs=seconds%60;
- const display=wholeHours>0?wholeHours+"h "+mins+"m":mins>0?mins+"m "+secs+"s":secs+"s";
- const sequence=selected?(JSON.parse(localStorage.getItem("study-x-progress")||"{}").sequence||9):9;
- const thresholds=[0,20,45,80,125,185,260,350,460,600];
- const currentThreshold=thresholds[9-sequence]||0,nextThreshold=thresholds[10-sequence]||9999;
- const levelProgress=Math.min(100,Math.max(0,(hours-currentThreshold)/(nextThreshold-currentThreshold)*100));
- const done=tasks.filter(t=>t.done).length,goal=Math.min(100,seconds/14400*100);
- const adjacent=selected?pathways.find(p=>p[0]===selected):null;
- const canSwitch=sequence<=4;
- return <main className="progress-page"><div className="progress-heading"><div><span className="section-kicker">PROGRESS / 02</span><h1>Your study progress.</h1><p>Choose a pathway, complete difficult challenges, and earn every sequence.</p></div><div className="progress-live"><i/> LIVE TRACKING</div></div>
- {!selected?<section className="pathway-select glass-panel"><div className="detail-head"><div><span className="section-kicker">BEGIN YOUR JOURNEY</span><h2>Choose your pathway.</h2><p>Pick one route. Your progression stays tied to it.</p></div><span>09 PATHWAYS</span></div><div className="pathway-choice-grid">{pathways.map((p,i)=><button className="pathway-choice" key={p[0]} onClick={()=>choosePath(p[0])}><small>PATHWAY {String(i+1).padStart(2,"0")}</small><strong>{p[0]}</strong><span>{p[1]} route</span><b>BEGIN AT SEQ. 9 →</b></button>)}</div></section>:<><section className="progress-hero glass-panel"><div><span className="progress-label">TOTAL STUDY TIME / {selected.toUpperCase()}</span><strong>{display}</strong><p>You have studied for <b>{wholeHours} hour{wholeHours===1?"":"s"}</b>. Current rank: <b>Sequence {sequence}</b>.</p></div><div className="progress-orb"><span>SEQ {sequence}</span><small>{Math.round(levelProgress)}% to next</small></div></section>
- <section className="sequence-panel glass-panel"><div className="detail-head"><div><span className="section-kicker">PATHWAY / {selected.toUpperCase()}</span><h2>Sequence progression</h2><p>Advancement gets harder at every step. There are no instant unlocks.</p></div><button className="switch-path-btn" onClick={()=>setShowPicker(v=>!v)}>SWITCH PATHWAY</button></div><div className="sequence-ladder">{[9,8,7,6,5,4,3,2,1,0].map(seq=>{const unlocked=seq>=sequence;const threshold=thresholds[9-seq]||0;const next=thresholds[10-seq]||null;return <div className={"seq-node "+(seq===sequence?"current ":"")+(unlocked?"unlocked":"locked")} key={seq}><span>SEQ {seq}</span><div><b>{seq===9?"Entry":seq===8?"Early development":seq===7?"Specialization":seq===6?"Advanced focus":seq===5?"High mastery":seq===4?"Demigod threshold":seq===3?"Saint tier":seq===2?"Angel tier":seq===1?"Attendant tier":"Apex"}</b><small>{seq===sequence?"CURRENT":unlocked?"UNLOCKED":"LOCKED"} · {threshold}h required</small></div><strong>{seq===sequence?"ACTIVE":unlocked?"✓":"LOCKED"}</strong></div>})}</div><div className="sequence-goal"><div><span>NEXT ADVANCEMENT</span><b>{nextThreshold-hours>0?Math.ceil(nextThreshold-hours):0} hours remaining</b><small>Requires sustained study plus completion of pathway challenges.</small></div><div className="goal-track"><i style={{width:levelProgress+"%"}}/></div></div>{canSwitch&&<div className="switch-note">Neighbouring-pathway switching becomes available at the high-sequence stage. In the novel-inspired model, most adjacent groups use a high-sequence threshold, while the Fool/Door/Error group is treated as a later high-sequence exception.</div>}</section>
- {showPicker&&<section className="pathway-select glass-panel"><div className="detail-head"><div><span className="section-kicker">PATHWAY CONTROL</span><h2>Choose another route.</h2></div></div><div className="pathway-choice-grid compact">{pathways.map(p=><button className={"pathway-choice "+(p[0]===selected?"selected":"")} key={p[0]} onClick={()=>p[0]!==selected&&choosePath(p[0])}><small>PATHWAY</small><strong>{p[0]}</strong><span>{p[1]} route</span></button>)}</div></section>}
- <div className="progress-stats"><article className="glass-panel"><span>HOURS STUDIED</span><b>{wholeHours}</b><small>total focused hours</small></article><article className="glass-panel"><span>FOCUSED MINUTES</span><b>{Math.floor(seconds/60).toLocaleString()}</b><small>minutes accumulated</small></article><article className="glass-panel"><span>SESSIONS</span><b>{sessions}</b><small>completed sessions</small></article></div></>}
- <div className="progress-work-grid"><section className="progress-tasks glass-panel"><div className="detail-head"><div><span className="section-kicker">WORKSPACE / TASKS</span><h2>Today&apos;s tasks</h2></div><span>{done}/{tasks.length}</span></div><form className="task-add" onSubmit={e=>{e.preventDefault();addTask()}}><input value={taskText} onChange={e=>setTaskText(e.target.value)} placeholder="Add a study task..." aria-label="Add a study task"/><button type="submit">ADD</button></form><div className="task-items">{tasks.length===0?<div className="task-empty">Add tasks here and tick them off as you study.</div>:tasks.map(t=><div className={"task-item "+(t.done?"done":"")} key={t.id}><button type="button" className="task-check" onClick={()=>setTasks(ts=>ts.map(x=>x.id===t.id?{...x,done:!x.done}:x))}>{t.done?"✓":""}</button><span>{t.text}</span><button type="button" className="task-delete" onClick={()=>setTasks(ts=>ts.filter(x=>x.id!==t.id))}>×</button></div>)}</div></section>
- <section className="progress-detail glass-panel"><div className="detail-head"><div><span className="section-kicker">CONSISTENCY</span><h2>Daily goal</h2></div><span>{Math.round(goal)}% of 4h goal</span></div><div className="big-progress-track"><div style={{width:goal+"%"}}/></div><div className="detail-foot"><span>0h</span><b>{display}</b><span>4h</span></div></section></main>
+  const pathways=[["Fool","Seer"],["Door","Apprentice"],["Error","Marauder"],["Visionary","Spectator"],["Sun","Bard"],["Tyrant","Sailor"],["White Tower","Reader"],["Darkness","Sleepless"],["Death","Corpse Collector"]];
+  const [seconds,setSeconds]=useState(0);
+  const [sessions,setSessions]=useState(0);
+  const [tasks,setTasks]=useState<{id:number;text:string;done:boolean}[]>([]);
+  const [taskText,setTaskText]=useState("");
+  const [selected,setSelected]=useState<string|null>(null);
+  const [showPicker,setShowPicker]=useState(false);
+
+  useEffect(()=>{
+    const load=()=>{
+      try{
+        const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
+        setSeconds(d.seconds||0);
+        setSessions(d.sessions||0);
+        setSelected(d.pathway||null);
+        const saved=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");
+        setTasks(Array.isArray(saved)?saved:[]);
+      }catch{}
+    };
+    load();
+    const id=setInterval(load,1000);
+    return()=>clearInterval(id);
+  },[]);
+
+  const saveTasks=(next:{id:number;text:string;done:boolean}[])=>{
+    setTasks(next);
+    localStorage.setItem("study-x-tasks",JSON.stringify(next));
+  };
+
+  const addTask=()=>{
+    const value=taskText.trim();
+    if(!value)return;
+    saveTasks([...tasks,{id:Date.now(),text:value,done:false}]);
+    setTaskText("");
+  };
+
+  const choosePath=(name:string)=>{
+    try{
+      const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
+      d.pathway=name;
+      d.sequence=d.sequence??9;
+      localStorage.setItem("study-x-progress",JSON.stringify(d));
+      setSelected(name);
+      setShowPicker(false);
+    }catch{}
+  };
+
+  const hours=seconds/3600;
+  const wholeHours=Math.floor(hours);
+  const mins=Math.floor((seconds%3600)/60);
+  const display=wholeHours>0?wholeHours+"h "+mins+"m":mins>0?mins+"m":Math.floor(seconds)+"s";
+  const sequence=selected?9:9;
+  const thresholds=[0,20,45,80,125,185,260,350,460,600];
+  const current=thresholds[9-sequence]||0;
+  const next=thresholds[10-sequence]||20;
+  const levelProgress=Math.min(100,Math.max(0,(hours-current)/(next-current)*100));
+  const done=tasks.filter(t=>t.done).length;
+  const goal=Math.min(100,seconds/14400*100);
+
+  return (
+    <main className="progress-page">
+      <div className="progress-heading">
+        <div><span className="section-kicker">PROGRESS / 02</span><h1>Your study progress.</h1><p>Choose a pathway, complete difficult challenges, and earn every sequence.</p></div>
+        <div className="progress-live"><i/> LIVE TRACKING</div>
+      </div>
+      {!selected ? (
+        <section className="pathway-select glass-panel">
+          <div className="detail-head"><div><span className="section-kicker">BEGIN YOUR JOURNEY</span><h2>Choose your pathway.</h2><p>Pick one route. Your progression stays tied to it.</p></div><span>09 PATHWAYS</span></div>
+          <div className="pathway-choice-grid">
+            {pathways.map((p,i)=><button className="pathway-choice" key={p[0]} onClick={()=>choosePath(p[0])}><small>PATHWAY {String(i+1).padStart(2,"0")}</small><strong>{p[0]}</strong><span>{p[1]} route</span><b>BEGIN AT SEQ. 9 →</b></button>)}
+          </div>
+        </section>
+      ) : (
+        <>
+          <section className="progress-hero glass-panel"><div><span className="progress-label">TOTAL STUDY TIME / {selected.toUpperCase()}</span><strong>{display}</strong><p>You have studied for <b>{wholeHours} hour{wholeHours===1?"":"s"}</b>. Current rank: <b>Sequence {sequence}</b>.</p></div><div className="progress-orb"><span>SEQ {sequence}</span><small>{Math.round(levelProgress)}% to next</small></div></section>
+          <section className="sequence-panel glass-panel">
+            <div className="detail-head"><div><span className="section-kicker">PATHWAY / {selected.toUpperCase()}</span><h2>Sequence progression</h2><p>Advancement gets harder at every step.</p></div><button className="switch-path-btn" onClick={()=>setShowPicker(v=>!v)}>SWITCH PATHWAY</button></div>
+            <div className="sequence-ladder">{[9,8,7,6,5,4,3,2,1,0].map(seq=><div className={"seq-node "+(seq===sequence?"current":"locked")} key={seq}><span>SEQ {seq}</span><div><b>{seq===9?"Entry":seq===8?"Early development":seq===7?"Specialization":seq===6?"Advanced focus":seq===5?"High mastery":seq===4?"Demigod threshold":seq===3?"Saint tier":seq===2?"Angel tier":seq===1?"Attendant tier":"Apex"}</b><small>{seq===sequence?"CURRENT":"LOCKED"} · {thresholds[9-seq]||0}h required</small></div><strong>{seq===sequence?"ACTIVE":"LOCKED"}</strong></div>)}</div>
+            <div className="sequence-goal"><div><span>NEXT ADVANCEMENT</span><b>{Math.max(0,Math.ceil(next-hours))} hours remaining</b><small>Requires sustained study plus pathway challenges.</small></div><div className="goal-track"><i style={{width:levelProgress+"%"}}/></div></div>
+          </section>
+          {showPicker&&<section className="pathway-select glass-panel"><div className="detail-head"><div><span className="section-kicker">PATHWAY CONTROL</span><h2>Choose another route.</h2></div></div><div className="pathway-choice-grid compact">{pathways.map(p=><button className={"pathway-choice "+(p[0]===selected?"selected":"")} key={p[0]} onClick={()=>p[0]!==selected&&choosePath(p[0])}><small>PATHWAY</small><strong>{p[0]}</strong><span>{p[1]} route</span></button>)}</div></section>}
+        </>
+      )}
+      <div className="progress-stats"><article className="glass-panel"><span>HOURS STUDIED</span><b>{wholeHours}</b><small>total focused hours</small></article><article className="glass-panel"><span>FOCUSED MINUTES</span><b>{Math.floor(seconds/60).toLocaleString()}</b><small>minutes accumulated</small></article><article className="glass-panel"><span>SESSIONS</span><b>{sessions}</b><small>completed sessions</small></article></div>
+      <div className="progress-work-grid">
+        <section className="progress-tasks glass-panel"><div className="detail-head"><div><span className="section-kicker">WORKSPACE / TASKS</span><h2>Today&apos;s tasks</h2></div><span>{done}/{tasks.length}</span></div><form className="task-add" onSubmit={e=>{e.preventDefault();addTask()}}><input value={taskText} onChange={e=>setTaskText(e.target.value)} placeholder="Add a study task..." aria-label="Add a study task"/><button type="submit">ADD</button></form><div className="task-items">{tasks.length===0?<div className="task-empty">Add tasks here and tick them off as you study.</div>:tasks.map(t=><div className={"task-item "+(t.done?"done":"")} key={t.id}><button type="button" className="task-check" onClick={()=>saveTasks(tasks.map(x=>x.id===t.id?{...x,done:!x.done}:x))}>{t.done?"✓":""}</button><span>{t.text}</span><button type="button" className="task-delete" onClick={()=>saveTasks(tasks.filter(x=>x.id!==t.id))}>×</button></div>)}</div></section>
+        <section className="progress-detail glass-panel"><div className="detail-head"><div><span className="section-kicker">CONSISTENCY</span><h2>Daily goal</h2></div><span>{Math.round(goal)}% of 4h goal</span></div><div className="big-progress-track"><div style={{width:goal+"%"}}/></div><div className="detail-foot"><span>0h</span><b>{display}</b><span>4h</span></div></section>
+      </div>
+    </main>
+  );
 }
 
 export default function Page(){
