@@ -35,8 +35,23 @@ function Timer(){
  const lastTickRef=useRef<number|null>(null);
  const lastPersistRef=useRef<number>(0);
  const lastRunRef=useRef(false);
+ const timerStateRef=useRef<{run:boolean;mode:Mode;total:number;startedAt:number|null;elapsedBefore:number}>({run:false,mode:"Timer",total:1500,startedAt:null,elapsedBefore:0});
 
  useEffect(()=>{try{const saved=localStorage.getItem("study-x-tasks");if(saved)setTasks(JSON.parse(saved))}catch{}},[]);
+ useEffect(()=>{
+   try{
+     const raw=sessionStorage.getItem("study-x-timer");
+     if(raw){
+       const s=JSON.parse(raw);
+       if(s?.run){
+         const now=Date.now(), started=Number(s.startedAt)||now, elapsedBefore=Number(s.elapsedBefore)||0;
+         timerStateRef.current={run:true,mode:s.mode||"Timer",total:Number(s.total)||1500,startedAt:started,elapsedBefore};
+         setMode(s.mode||"Timer"); setTotal(Number(s.total)||1500); setLeft(s.mode==="Stopwatch"?elapsedBefore+Math.floor((now-started)/1000):Math.max(0,(Number(s.total)||1500)-elapsedBefore-Math.floor((now-started)/1000)));
+         setRun(true);
+       }
+     }
+   }catch{}
+ },[]);
  useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok)return;const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
  useEffect(()=>{try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}},[tasks]);
 
@@ -66,8 +81,7 @@ function Timer(){
    }catch{}
  }
 
- useEffect(()=>{
-   if(run){
+ useEffect(()=>{timerStateRef.current={...timerStateRef.current,run,mode,total,startedAt:startedAtRef.current,elapsedBefore:Math.max(0,total-left)};if(run){try{sessionStorage.setItem("study-x-timer",JSON.stringify({run:true,mode,total,startedAt:startedAtRef.current||Date.now(),elapsedBefore:mode==="Stopwatch"?left:Math.max(0,total-left)}))}catch{}}
      const now=Date.now();
      if(!startedAtRef.current)startedAtRef.current=now;
      if(!lastTickRef.current)lastTickRef.current=now;
@@ -107,9 +121,9 @@ function Timer(){
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
  function apply(){const n=Math.min(20*3600,(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0));if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
  function toggle(){if(mode==="Stopwatch"){if(!run){startedAtRef.current=Date.now()-(left*1000);lastTickRef.current=Date.now();}setRun(v=>!v);return}if(!total)return;if(!left){setLeft(total);startedAtRef.current=Date.now();lastTickRef.current=Date.now();}else if(!run){const elapsed=total-left;startedAtRef.current=Date.now()-elapsed*1000;lastTickRef.current=Date.now();}setRun(v=>!v)}
- function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;setLeft(mode==="Stopwatch"?0:total)}
+ function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;try{sessionStorage.removeItem("study-x-timer")}catch{}setLeft(mode==="Stopwatch"?0:total)}
  function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
- async function saveNow(){applyElapsed();try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
+ async function saveNow(){applyElapsed();try{sessionStorage.removeItem("study-x-timer")}catch{}setRun(false);try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
  const done=tasks.filter(t=>t.done).length;
  return <main className="timer-page">
   <div className="timer-intro"><span className="section-kicker">FOCUS / 01</span><h1>Make time for what matters.</h1><p>A quiet workspace for deliberate study.</p></div>
