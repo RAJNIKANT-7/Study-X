@@ -131,7 +131,6 @@ function Timer(){
    if(lastRunRef.current){
      applyElapsed();
      lastRunRef.current=false;
-     void clearActiveTimerCloud();
    }
  },[run,mode,total]);
 
@@ -166,7 +165,26 @@ function PathwayProgress(){
  ] as const;
  const [data,setData]=useState({seconds:0,sessions:0,daily:{}} as {seconds:number;sessions:number;daily:Record<string,number>;pathway?:string;sequence?:number});
  const [selected,setSelected]=useState<string|null>(null);
- useEffect(()=>{const load=async()=>{try{const r=await fetch("/api/sync",{cache:"no-store"});if(r.ok){const x=await r.json(),p=x.data?.progress;if(p){localStorage.setItem("study-x-progress",JSON.stringify(p));setData(p);setSelected(p.pathway||null)}}}catch{try{setData(JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}"))}catch{}}};load();const id=setInterval(load,3000);return()=>clearInterval(id)},[]);
+ useEffect(()=>{
+   let alive=true;
+   const load=async()=>{
+     try{
+       const local=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");
+       if(alive&&local.pathway){setData(local);setSelected(local.pathway)}
+       const r=await fetch("/api/sync",{cache:"no-store"});
+       if(r.ok){
+         const x=await r.json(),p=x.data?.progress;
+         if(p){
+           const merged={...local,...p};
+           if(alive){localStorage.setItem("study-x-progress",JSON.stringify(merged));setData(merged);setSelected(merged.pathway||null)}
+         }
+       }
+     }catch{}
+   };
+   load();
+   const id=setInterval(load,5000);
+   return()=>{alive=false;clearInterval(id)}
+ },[]);
  async function choose(name:string){if(selected)return;const p={...data,pathway:name,sequence:9};setSelected(name);setData(p);localStorage.setItem("study-x-progress",JSON.stringify(p));try{const r=await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:p})});if(!r.ok)throw new Error("sync failed")}catch{}}
  const active=pathways.find(p=>p.id===selected),currentSeq=Math.max(0,Math.min(9,data.sequence??9)),hours=Math.floor((data.seconds||0)/3600),days=Object.keys(data.daily||{}).length;
  const currentName=active?active.seq[9-currentSeq]:"";
@@ -229,18 +247,27 @@ function Progress(){
     let alive=true;
     const load=async()=>{
       try{
-        const d=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
-        if(alive){setSeconds(d.seconds||0);setSessions(d.sessions||0);setSelected(d.pathway||null);}
+        const local=JSON.parse(localStorage.getItem("study-x-progress")||"{}");
+        if(alive){setSeconds(local.seconds||0);setSessions(local.sessions||0);setSelected(local.pathway||null);}
+        const saved=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");
+        if(alive&&Array.isArray(saved))setTasks(saved);
         const a=await fetch("/api/auth",{cache:"no-store"});
         if((await a.json()).loggedIn){
           const r=await fetch("/api/sync",{cache:"no-store"});
-          if(r.ok){const x=await r.json();if(x.data?.progress){localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(alive){setSeconds(x.data.progress.seconds||0);setSessions(x.data.progress.sessions||0);setSelected(x.data.progress.pathway||null)}}if(Array.isArray(x.data?.tasks)){localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks));if(alive)setTasks(x.data.tasks);return;}}
+          if(r.ok){
+            const x=await r.json();
+            if(x.data?.progress){
+              const merged={...local,...x.data.progress};
+              localStorage.setItem("study-x-progress",JSON.stringify(merged));
+              if(alive){setSeconds(merged.seconds||0);setSessions(merged.sessions||0);setSelected(merged.pathway||null);}
+            }
+            if(Array.isArray(x.data?.tasks)){localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks));if(alive)setTasks(x.data.tasks);}
+          }
         }
-        const saved=JSON.parse(localStorage.getItem("study-x-tasks")||"[]");if(alive)setTasks(Array.isArray(saved)?saved:[]);
       }catch{}
     };
     load();
-    const id=setInterval(load,3000);
+    const id=setInterval(load,5000);
     return()=>{alive=false;clearInterval(id)};
   },[]);
 
@@ -270,6 +297,13 @@ function Progress(){
       localStorage.setItem("study-x-progress",JSON.stringify(d));
       setSelected(name);
       setShowPicker(false);
+      void (async()=>{
+        try{
+          const a=await fetch("/api/auth",{cache:"no-store"});
+          if(!(await a.json()).loggedIn)return;
+          await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:d})});
+        }catch{}
+      })();
     }catch{}
   };
 
