@@ -120,6 +120,7 @@ function Timer(){
              void persistProgress(d);
            }catch{}
            try{sessionStorage.removeItem("study-x-timer")}catch{}
+           void clearActiveTimerCloud();
            setRun(false);
          }
          return next;
@@ -130,6 +131,7 @@ function Timer(){
    if(lastRunRef.current){
      applyElapsed();
      lastRunRef.current=false;
+     void clearActiveTimerCloud();
    }
  },[run,mode,total]);
 
