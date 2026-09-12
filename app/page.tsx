@@ -1,163 +1,68 @@
 "use client";
-import {useEffect,useMemo,useState} from "react";
-import {Check,ChevronDown,Clock3,Flame,Menu,Pause,Play,RotateCcw,Settings,Timer,Volume2,X} from "lucide-react";
+import {useEffect,useMemo,useRef,useState} from "react";
+import {usePathname,useRouter} from "next/navigation";
 
-type Mode="timer"|"clock"|"pomodoro"|"stopwatch";
-const labels=["Mathematics","Physics","Chemistry","Computer Science","Biology"];
-const quick=[15,25,45,60,120];
+type Mode="Timer"|"Pomodoro"|"Stopwatch"|"Focus";
+const modes:Mode[]=["Timer","Pomodoro","Stopwatch","Focus"];
+const presets=[15,25,45,60,120];
+const cats=["All","Streaks","Study Hours","Sessions","Social","Special"];
+const achievements=[
+["🌱","First Step","Complete your very first study session","Sessions",true,50],
+["🔥","On a Roll","Maintain a 3-day study streak","Streaks",true,100],
+["⚔️","Week Warrior","Study every day for 7 consecutive days","Streaks",true,250],
+["💯","Century Club","Log 100 total study hours","Study Hours",true,500],
+["🦉","Night Owl","Study after midnight 10 times","Special",true,200],
+["🌅","Early Bird","Start a session before 6am on 5 different days","Special",true,200],
+["🦋","Social Butterfly","Join 3 different study groups","Social",true,150],
+["🏆","Iron Discipline","Study for 30 consecutive days","Streaks",false,1000,18,30],
+["⚡","Half Millennium","Log 500 total study hours","Study Hours",false,1500,247,500],
+["🎯","Session Master","Complete 200 study sessions","Sessions",false,600,134,200],
+["👑","Leaderboard Legend","Reach the top 3 on the global leaderboard","Social",false,2000,0,1],
+["🍅","Pomodoro Pro","Complete 500 Pomodoro sessions","Sessions",false,800,89,500],
+["🌟","Millennium","Log 1000 total study hours","Study Hours",false,5000,247,1000],
+["🤝","Study Buddy","Study in a group session 25 times","Social",false,400,11,25],
+["🧘","Deep Focus","Complete a 4-hour uninterrupted session","Special",false,1000,0,1],
+["📅","Consistency King","Study at the same time every day for 2 weeks","Streaks",false,350,5,14]
+] as const;
 
-function pad(n:number){return String(Math.max(0,n)).padStart(2,"0")}
-function format(sec:number){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`}
+function pad(n:number){return String(n).padStart(2,"0")}
+function fmt(n:number){const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?pad(h)+":"+pad(m)+":"+pad(s):pad(m)+":"+pad(s)}
+
+function Timer(){
+ const [mode,setMode]=useState<Mode>("Timer"),[total,setTotal]=useState(1500),[left,setLeft]=useState(1500),[run,setRun]=useState(false),[label,setLabel]=useState("Create your label"),[open,setOpen]=useState(false),[custom,setCustom]=useState({h:"",m:"",s:""}),[sound,setSound]=useState(true);
+ const ref=useRef<ReturnType<typeof setInterval>|null>(null);
+ useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1}),1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
+ const pct=total?((total-left)/total)*100:0;
+ function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else{setTotal(0);setLeft(0)}}
+ function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
+ function apply(){const n=(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0);if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
+ function toggle(){if(mode==="Stopwatch"){setRun(v=>!v);return}if(!total)return;if(!left)setLeft(total);setRun(v=>!v)}
+ return <main className="timer-page">
+  <div className="mode-tabs glass-pill">{modes.map(m=><button key={m} onClick={()=>choose(m)} className={m===mode?"active-pill":""}>{m}</button>)}</div>
+  <section className="duration-editor"><div className="eyebrow">Set duration</div><div className="duration-inputs">{(["h","m","s"] as const).map(k=><label key={k}><input value={custom[k]} maxLength={2} inputMode="numeric" onChange={e=>setCustom({...custom,[k]:e.target.value.replace(/\D/g,"")})}/><span>{k==="h"?"hours":k==="m"?"minutes":"seconds"}</span></label>)}</div><button className="mini-btn" onClick={apply}>Set custom</button><div className="presets">{presets.map(n=><button key={n} onClick={()=>preset(n)}>{n>=60?n/60+"h":n+"m"}</button>)}</div></section>
+  <div className="timer-ring-wrap"><div className="timer-ring" style={{background:"conic-gradient(#8b5cf6 0%,#ec4899 "+Math.max(.5,pct)+"%,rgba(255,255,255,.06) "+Math.max(.5,pct)+"%)"}}><div className="timer-disc"><div className="timer-mode-label">{run?"In session":mode}</div><div className="timer-value">{fmt(left)}</div><div className="time-units"><span>HRS</span><span>MIN</span><span>SEC</span></div><div className="label-wrap"><button className="label-button" onClick={()=>setOpen(v=>!v)}>🏷️ {label} ⌄</button>{open&&<div className="label-menu">{["Mathematics","Physics","Chemistry","Computer Science","Biology"].map(x=><button key={x} onClick={()=>{setLabel(x);setOpen(false)}}>{x}</button>)}</div>}</div></div></div></div>
+  <div className="controls"><button className="round-control" onClick={()=>{setRun(false);setLeft(mode==="Stopwatch"?0:total)}}>↺</button><button className="start-button" onClick={toggle}>{run?"⏸ Pause":!left&&total?"▶ Restart":"▶ Start Timer"}</button><button className="round-control" onClick={()=>setSound(v=>!v)}>{sound?"🔊":"🔇"}</button></div>
+  <div className="bottom-tools"><button>☰ <span>Tasks</span></button><button onClick={()=>setSound(v=>!v)}>{sound?"🔊":"🔇"}</button><button>🎵</button><button>🎙 <span>Study Room</span><i>♛</i></button></div>
+  <p className="quote">“The secret of getting ahead is getting started.”</p>
+ </main>
+}
+
+function Achievements(){
+ const [cat,setCat]=useState("All");
+ const list=useMemo(()=>cat==="All"?achievements:achievements.filter(a=>a[3]===cat),[cat]);
+ const unlocked=achievements.filter(a=>a[4]).length,xp=achievements.filter(a=>a[4]).reduce((s,a)=>s+a[5],0);
+ return <main className="achievements-page"><div className="page-heading"><h1>Achievements</h1><p>Track your milestones and earn XP as you study</p></div>
+ <div className="stats-grid">{[["🏅",unlocked+"/"+achievements.length,"Unlocked","#c084fc"],["⚡",xp.toLocaleString(),"Total XP","#f59e0b"],["🔥","18 days","Current Streak","#f97316"],["⏱️","247 h","Study Hours","#60a5fa"]].map(x=><div className="stat-card" key={x[2]}><span>{x[0]}</span><b style={{color:x[3]}}>{x[1]}</b><small>{x[2]}</small></div>)}</div>
+ <div className="category-filters">{cats.map(c=><button key={c} onClick={()=>setCat(c)} className={cat===c?"active-filter":""}>{c}</button>)}</div>
+ <div className="result-line"><span>{list.filter(a=>a[4]).length} unlocked · {list.filter(a=>!a[4]).length} locked</span><i/></div>
+ <div className="achievement-grid">{list.map(a=>{const p=a[6]&&a[7]?Math.min(100,a[6]/a[7]*100):0;return <article key={a[1]} className="achievement-card" style={{opacity:a[4]?1:.55,borderColor:a[4]?"rgba(192,132,252,.2)":"rgba(255,255,255,.06)"}}><div className="achievement-top"><div className="achievement-icon">{a[0]}</div><span className="rarity">{a[4]?"Unlocked":"Locked"}</span></div><div><h3>{a[1]}</h3><p>{a[2]}</p></div><div className="achievement-footer">{a[4]?<><span>Completed</span><b>+{a[5]} XP</b></>:<>{a[6]!=null&&<><span>{a[6]} / {a[7]}</span><div className="progress-track"><div style={{width:p+"%"}}/></div></>}<span>+{a[5]} XP</span></>}</div></article>})}</div>
+ </main>
+}
 
 export default function Page(){
- const [mode,setMode]=useState<Mode>("timer");
- const [seconds,setSeconds]=useState(0);
- const [initial,setInitial]=useState(0);
- const [running,setRunning]=useState(false);
- const [mobile,setMobile]=useState(false);
- const [label,setLabel]=useState("Mathematics");
- const [showLabels,setShowLabels]=useState(false);
- const [hours,setHours]=useState("");
- const [minutes,setMinutes]=useState("");
- const [secs,setSecs]=useState("");
- const [volume,setVolume]=useState(true);
- const [sessions,setSessions]=useState(0);
- const [today,setToday]=useState(0);
- const [streak,setStreak]=useState(0);
-
- useEffect(()=>{
-   try{
-    setSessions(Number(localStorage.getItem("sx-sessions")||0));
-    setToday(Number(localStorage.getItem("sx-today")||0));
-    setStreak(Number(localStorage.getItem("sx-streak")||0));
-   }catch{}
- },[]);
-
- useEffect(()=>{
-   if(!running)return;
-   const id=window.setInterval(()=>{
-     setSeconds(v=>{
-       if(mode==="stopwatch")return v+1;
-       if(v<=1){window.clearInterval(id);setRunning(false);complete();return 0}
-       return v-1;
-     });
-   },1000);
-   return()=>window.clearInterval(id);
- },[running,mode]);
-
- function complete(){
-   if(mode==="stopwatch"||initial>0){
-    const mins=Math.max(1,Math.round((mode==="stopwatch"?seconds:initial)/60));
-    const ns=sessions+1,nt=today+mins;
-    setSessions(ns);setToday(nt);
-    try{localStorage.setItem("sx-sessions",String(ns));localStorage.setItem("sx-today",String(nt));localStorage.setItem("sx-streak",String(Math.max(1,streak)))}catch{}
-   }
- }
- function start(){
-   if(mode==="stopwatch"){setSeconds(0);setRunning(true);return}
-   const n=seconds>0?seconds:1500;
-   setInitial(n);setSeconds(n);setRunning(true);
- }
- function reset(){setRunning(false);setSeconds(mode==="stopwatch"?0:initial||0)}
- function setQuick(n:number){setRunning(false);setInitial(n*60);setSeconds(n*60);setMode("timer")}
- function setCustom(){
-   const n=(Number(hours)||0)*3600+(Number(minutes)||0)*60+(Number(secs)||0);
-   if(n>0){setRunning(false);setInitial(n);setSeconds(n)}
- }
- function choose(m:Mode){
-   if(running)return;
-   setMode(m);
-   if(m==="stopwatch"){setSeconds(0);setInitial(0)}
-   else if(m==="pomodoro"){setSeconds(1500);setInitial(1500)}
- }
- const ring=Math.max(0,Math.min(100,initial?seconds/initial*100:0));
- const modeName=mode==="timer"?"Timer":mode==="clock"?"Clock":mode==="pomodoro"?"Pomodoro":"Stopwatch";
-
- return <main className="min-h-screen bg-[#050505] text-zinc-100 selection:bg-white/20">
-  <style jsx global>{`
-   *{box-sizing:border-box}body{margin:0;background:#050505;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-   button,input,select{font:inherit}.fade{transition:background .2s,border-color .2s,color .2s,transform .2s}.fade:hover{background:rgba(255,255,255,.07)}
-   .thin{border-color:rgba(255,255,255,.09)}
-   .ring{background:conic-gradient(rgba(255,255,255,.2) ${ring}%,rgba(255,255,255,.055) 0)}
-   @media(max-width:760px){.desktop-nav{display:none}.timer-circle{width:300px!important;height:300px!important}.timer-value{font-size:54px!important}.side-links{display:none}}
-  `}</style>
-
-  <header className="fixed inset-x-0 top-0 z-50 border-b thin bg-[#050505]/90 backdrop-blur-xl">
-   <div className="mx-auto flex h-14 max-w-[1450px] items-center justify-between px-4 md:px-6">
-    <button onClick={()=>setMobile(!mobile)} className="mr-3 grid h-8 w-8 place-items-center rounded-lg text-zinc-500 md:hidden">{mobile?<X size={17}/>:<Menu size={17}/>}</button>
-    <button className="flex items-center gap-2.5 text-sm font-medium tracking-tight">
-      <span className="grid h-7 w-7 place-items-center rounded-full border border-white/20 text-[10px]">SX</span>Study X
-    </button>
-    <nav className="desktop-nav ml-8 flex flex-1 items-center gap-0.5">
-      {["Timer","Progress","Dashboard","Habits","AI Helper","Labels","Groups","Leaderboard","Pricing"].map((x,i)=>
-       <button key={x} className={`fade rounded-lg px-3 py-2 text-[11px] ${i===0?"bg-white/[.06] text-white":"text-zinc-500"}`}>{x}</button>
-      )}
-    </nav>
-    <div className="flex items-center gap-1">
-      <button className="fade rounded-lg border thin px-3 py-1.5 text-[11px] text-zinc-400">Your Stats <Flame size={12} className="ml-1 inline text-amber-300"/></button>
-      <button className="fade grid h-8 w-8 place-items-center rounded-lg text-zinc-500"><Settings size={15}/></button>
-    </div>
-   </div>
-   {mobile&&<div className="border-t thin bg-[#070707] p-2 md:hidden">{["Timer","Progress","Dashboard","Habits","AI Helper","Labels","Groups","Leaderboard","Pricing"].map(x=><button key={x} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-zinc-400 hover:bg-white/[.05]">{x}</button>)}</div>}
-  </header>
-
-  <section className="mx-auto flex min-h-screen max-w-[1050px] flex-col items-center px-4 pb-16 pt-24">
-    <div className="flex items-center gap-1 rounded-full border thin bg-white/[.015] p-1">
-      {(["timer","clock","pomodoro","stopwatch"] as Mode[]).map(m=>
-       <button key={m} onClick={()=>choose(m)} className={`fade rounded-full px-4 py-2 text-[10px] uppercase tracking-wide ${mode===m?"bg-white/[.09] text-white":"text-zinc-600"}`}>{m}</button>
-      )}
-    </div>
-
-    <div className="mt-8 text-center">
-      <p className="text-[9px] uppercase tracking-[.28em] text-zinc-600">Set duration</p>
-      <div className="mt-5 flex items-center justify-center gap-2">
-       {[["h",hours,setHours],["m",minutes,setMinutes],["s",secs,setSecs]].map(([k,v,set]:any)=>
-        <div key={k} className="text-center">
-          <input value={v} onChange={e=>set(e.target.value.replace(/\\D/g,"").slice(0,2))} className="h-12 w-16 rounded-lg border thin bg-white/[.02] text-center text-xl font-light text-zinc-300 outline-none focus:border-white/25" />
-          <div className="mt-1 text-[8px] uppercase tracking-widest text-zinc-700">{k==="h"?"hours":k==="m"?"minutes":"seconds"}</div>
-        </div>
-       )}
-      </div>
-      <button onClick={setCustom} className="mt-3 rounded-md border thin px-3 py-1.5 text-[9px] text-zinc-500 hover:text-zinc-300">Set custom</button>
-      <div className="mt-5 flex flex-wrap justify-center gap-1.5">
-       {quick.map(n=><button key={n} onClick={()=>setQuick(n)} className="fade rounded-md border thin px-3 py-1.5 text-[9px] text-zinc-500">{n>=60?n/60+"h":n+"m"}</button>)}
-      </div>
-    </div>
-
-    <div className="relative mt-9 grid place-items-center">
-      <div className="timer-circle ring grid h-[380px] w-[380px] place-items-center rounded-full p-[1px]">
-       <div className="grid h-full w-full place-items-center rounded-full bg-[#050505]">
-        <div className="text-center">
-         <div className="mb-3 text-[9px] uppercase tracking-[.3em] text-zinc-600">{running?"In session":modeName}</div>
-         <div className="timer-value text-[68px] font-light tracking-[-.06em] tabular-nums">{format(seconds)}</div>
-         <button onClick={()=>setShowLabels(!showLabels)} className="fade mt-5 rounded-full border thin px-3 py-1.5 text-[9px] text-zinc-500">{label}<ChevronDown size={11} className="ml-1 inline"/></button>
-         {showLabels&&<div className="absolute left-1/2 top-[calc(100%+8px)] z-20 w-44 -translate-x-1/2 rounded-xl border thin bg-[#111]/95 p-1 text-left shadow-2xl backdrop-blur-xl">{labels.map(x=><button key={x} onClick={()=>{setLabel(x);setShowLabels(false)}} className="block w-full rounded-lg px-3 py-2 text-[10px] text-zinc-400 hover:bg-white/[.06]">{x}</button>)}</div>}
-        </div>
-       </div>
-      </div>
-    </div>
-
-    <div className="mt-8 flex items-center gap-2">
-      <button onClick={start} className="fade min-w-36 rounded-full bg-white px-7 py-3 text-[11px] font-medium text-black">{running?<><Pause size={13} className="mr-2 inline"/>Pause</>:<><Play size={13} className="mr-2 inline"/>Start Timer</>}</button>
-      <button onClick={reset} className="fade grid h-10 w-10 place-items-center rounded-full border thin text-zinc-500"><RotateCcw size={14}/></button>
-      <button onClick={()=>setVolume(!volume)} className={`fade grid h-10 w-10 place-items-center rounded-full border thin ${volume?"text-zinc-400":"text-zinc-700"}`}><Volume2 size={14}/></button>
-    </div>
-
-    <p className="mt-6 text-[10px] italic text-zinc-700">The secret of getting ahead is getting started.</p>
-
-    <div className="mt-10 grid w-full max-w-xl grid-cols-3 overflow-hidden rounded-xl border thin bg-white/[.015]">
-      {[["🔥",streak,"DAY STREAK"],["✓",sessions,"SESSIONS"],["◷",today,"MINUTES"]].map(([i,v,l])=><div key={l as string} className="border-r thin p-4 text-center last:border-0"><div className="text-xs text-zinc-600">{i}</div><div className="mt-1 text-lg font-light">{v}</div><div className="mt-1 text-[8px] tracking-[.18em] text-zinc-700">{l}</div></div>)}
-    </div>
-
-    <div className="mt-12 flex flex-wrap justify-center gap-2">
-      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Check size={11} className="mr-1.5 inline"/>Todo List</button>
-      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Timer size={11} className="mr-1.5 inline"/>Focus</button>
-      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Clock3 size={11} className="mr-1.5 inline"/>History</button>
-    </div>
-  </section>
-
-  <footer className="border-t thin px-5 py-8 text-center">
-   <p className="text-[10px] text-zinc-700">Study X · A focused study workspace</p>
-  </footer>
- </main>
+ const path=usePathname(),router=useRouter(),isAch=path==="/achievements";
+ const nav=["Timer","Progress","Leaderboard","Achievements","AI Helper","Pricing"],routes:Record<string,string>={Timer:"/timer",Progress:"/progress",Leaderboard:"/leaderboard",Achievements:"/achievements","AI Helper":"/ai-helper",Pricing:"/pricing"};
+ return <div className="study-x-app"><div className="aurora aurora-one"/><div className="aurora aurora-two"/><div className="aurora aurora-three"/>
+ <nav className="top-nav"><button className="brand" onClick={()=>router.push("/timer")}><span>📖</span><b><em>Study</em> X</b></button><div className="nav-pill glass-pill">{nav.map(n=><button key={n} onClick={()=>router.push(routes[n])} className={(n==="Achievements"&&isAch)||(n==="Timer"&&path!=="/achievements"&&path==="/timer")?"active-pill":""}>{n}</button>)}</div><div className="nav-right"><button className="icon-button">🔔</button><button className="avatar">A</button></div></nav>
+ <div className="content">{isAch?<Achievements/>:<Timer/>}</div><div className="status-bar"><span><i/> All operations normal</span><span><i/> 271 studying now</span></div></div>
 }
