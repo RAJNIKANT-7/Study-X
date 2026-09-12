@@ -1,71 +1,163 @@
 "use client";
 import {useEffect,useMemo,useState} from "react";
-import {usePathname,useRouter} from "next/navigation";
-import {AlarmClock,BarChart3,BookOpen,Check,ChevronRight,Clock3,Flame,LayoutDashboard,Menu,Pause,Play,Plus,RotateCcw,Settings,Square,Target,Timer as TimerIcon,Trash2,Trophy,X} from "lucide-react";
+import {Check,ChevronDown,Clock3,Flame,Menu,Pause,Play,RotateCcw,Settings,Timer,Volume2,X} from "lucide-react";
 
-type Mode="timer"|"pomodoro"|"stopwatch";
-type Session={id:string;subject:string;mode:Mode;duration:number;startedAt:string;completedAt?:string;status:"completed"|"interrupted"};
-type Task={id:string;text:string;done:boolean;subject?:string};
-type Habit={id:string;name:string;days:number[];done:string[]};
-const key="study-x-v1";
+type Mode="timer"|"clock"|"pomodoro"|"stopwatch";
+const labels=["Mathematics","Physics","Chemistry","Computer Science","Biology"];
+const quick=[15,25,45,60,120];
 
-function load<T>(k:string,f:T):T{if(typeof window==="undefined")return f;try{return JSON.parse(localStorage.getItem(key+"-"+k)||"null")??f}catch{return f}}
-function save(k:string,v:unknown){try{localStorage.setItem(key+"-"+k,JSON.stringify(v))}catch{}}
-function fmt(sec:number){sec=Math.max(0,Math.floor(sec));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?[`${String(h).padStart(2,"0")}`,`${String(m).padStart(2,"0")}`,`${String(s).padStart(2,"0")}`].join(":"):[String(Math.floor(sec/60)).padStart(2,"0"),String(sec%60).padStart(2,"0")].join(":")}
-function dayKey(d=new Date()){return d.toISOString().slice(0,10)}
-function mins(s:Session[]){return Math.round(s.filter(x=>x.status==="completed").reduce((a,x)=>a+x.duration,0)/60)}
-
-const nav=[["/timer","Timer",Clock3],["/progress","Progress",BarChart3],["/tasks","Tasks",Check],["/habits","Habits",Target],["/community","Community",Trophy],["/settings","Settings",Settings]] as const;
-const subjects=["Mathematics","Physics","Chemistry","Computer Science","Biology","English","Other"];
+function pad(n:number){return String(Math.max(0,n)).padStart(2,"0")}
+function format(sec:number){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`}
 
 export default function Page(){
- const path=usePathname(),router=useRouter(); const [mobile,setMobile]=useState(false);
- const [sessions,setSessions]=useState<Session[]>([]); const [tasks,setTasks]=useState<Task[]>([]); const [habits,setHabits]=useState<Habit[]>([]);
- const [goal,setGoal]=useState(120); const [subject,setSubject]=useState("Physics"); const [mode,setMode]=useState<Mode>("timer");
- const [seconds,setSeconds]=useState(1500); const [initial,setInitial]=useState(1500); const [running,setRunning]=useState(false); const [started,setStarted]=useState<number|null>(null);
- const [pomoPhase,setPomoPhase]=useState<"focus"|"break"|"long">("focus"); const [pomoSession,setPomoSession]=useState(1);
- const [laps,setLaps]=useState<number[]>([]); const [lapStart,setLapStart]=useState<number|null>(null);
- const [theme,setTheme]=useState("Obsidian"); const [sound,setSound]=useState(true); const [volume,setVolume]=useState(.5);
- useEffect(()=>{setSessions(load("sessions",[]));setTasks(load("tasks",[]));setHabits(load("habits",[]));setGoal(load("goal",120));setTheme(load("theme","Obsidian"));setSound(load("sound",true));setVolume(load("volume",.5));},[]);
- useEffect(()=>save("sessions",sessions),[sessions]);useEffect(()=>save("tasks",tasks),[tasks]);useEffect(()=>save("habits",habits),[habits]);useEffect(()=>save("goal",goal),[goal]);useEffect(()=>save("theme",theme),[theme]);useEffect(()=>save("sound",sound),[sound]);useEffect(()=>save("volume",volume),[volume]);
- useEffect(()=>{document.documentElement.dataset.theme=theme;return()=>{document.title="Study X"}},[theme]);
- useEffect(()=>{if(!running)return;const id=window.setInterval(()=>{if(mode==="stopwatch"){if(lapStart===null)setLapStart(Date.now());setSeconds(Math.floor((Date.now()-(started||Date.now()))/1000))}else if(started!==null){const left=Math.max(0,Math.round(seconds-(Date.now()-started)/1000));setSeconds(left)}},250);return()=>clearInterval(id)},[running,mode,started,seconds,lapStart]);
- useEffect(()=>{if(running&&mode!=="stopwatch"&&seconds<=0){finish(true)}},[seconds,running,mode]);
- useEffect(()=>{document.title=running?`${fmt(seconds)} • Study X`:"Study X — Focus with intention"},[seconds,running]);
+ const [mode,setMode]=useState<Mode>("timer");
+ const [seconds,setSeconds]=useState(0);
+ const [initial,setInitial]=useState(0);
+ const [running,setRunning]=useState(false);
+ const [mobile,setMobile]=useState(false);
+ const [label,setLabel]=useState("Mathematics");
+ const [showLabels,setShowLabels]=useState(false);
+ const [hours,setHours]=useState("");
+ const [minutes,setMinutes]=useState("");
+ const [secs,setSecs]=useState("");
+ const [volume,setVolume]=useState(true);
+ const [sessions,setSessions]=useState(0);
+ const [today,setToday]=useState(0);
+ const [streak,setStreak]=useState(0);
 
- const today=useMemo(()=>dayKey(),[]), todayMin=mins(sessions.filter(s=>s.startedAt.slice(0,10)===today));
- const streak=useMemo(()=>{let n=0,d=new Date();const set=new Set(sessions.filter(s=>s.status==="completed").map(s=>s.startedAt.slice(0,10)));while(set.has(dayKey(d))){n++;d.setDate(d.getDate()-1)}return n},[sessions]);
- const weekly=useMemo(()=>Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const k=dayKey(d);return {label:d.toLocaleDateString("en",{weekday:"short"}),value:mins(sessions.filter(s=>s.status==="completed"&&s.startedAt.slice(0,10)===k))}}),[sessions]);
- const subjectStats=useMemo(()=>subjects.map(x=>({name:x,value:mins(sessions.filter(s=>s.subject===x))})).filter(x=>x.value),[sessions]);
+ useEffect(()=>{
+   try{
+    setSessions(Number(localStorage.getItem("sx-sessions")||0));
+    setToday(Number(localStorage.getItem("sx-today")||0));
+    setStreak(Number(localStorage.getItem("sx-streak")||0));
+   }catch{}
+ },[]);
 
- function begin(nextSeconds=seconds){const now=Date.now();setStarted(now);setRunning(true);if(mode==="stopwatch"){setSeconds(0);setLapStart(now)}else setSeconds(nextSeconds)}
- function chooseMode(m:Mode){if(running)return;setMode(m);setPomoPhase("focus");const n=m==="pomodoro"?1500:1500;setSeconds(n);setInitial(n)}
- function finish(auto=false){if(started===null)return;const duration=mode==="stopwatch"?Math.max(1,Math.floor((Date.now()-started)/1000)):initial;const item:Session={id:crypto.randomUUID(),subject,mode,duration,startedAt:new Date(started).toISOString(),completedAt:new Date().toISOString(),status:auto?"completed":"completed"};setSessions(v=>[item,...v]);setRunning(false);setStarted(null);setLapStart(null);if(auto&&mode==="pomodoro"){const next=pomoPhase==="focus"?(pomoSession>=4?"long":"break"):"focus";setPomoPhase(next);if(next==="focus")setPomoSession(x=>x+1);const n=next==="focus"?1500:next==="break"?300:900;setSeconds(n);setInitial(n)}if(auto&&sound){try{const C=window.AudioContext;const c=new C();const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=660;g.gain.value=volume*.12;o.start();o.stop(c.currentTime+.18)}catch{}}}
- function pause(){if(!running)return;setRunning(false);if(started!==null){const elapsed=mode==="stopwatch"?Math.floor((Date.now()-started)/1000):initial-seconds;setStarted(null);if(elapsed>2&&mode!=="stopwatch")setSeconds(Math.max(0,seconds))}}
- function reset(){setRunning(false);setStarted(null);setLapStart(null);setSeconds(mode==="pomodoro"?(pomoPhase==="focus"?1500:pomoPhase==="break"?300:900):mode==="timer"?initial:0);setLaps([])}
- function quick(n:number){setInitial(n);setSeconds(n);setMode("timer");setRunning(false);setStarted(null)}
- function addTask(){const text=prompt("Task name");if(text?.trim())setTasks(v=>[{id:crypto.randomUUID(),text:text.trim(),done:false,subject},...v])}
- function exportData(){const blob=new Blob([JSON.stringify({sessions,tasks,habits,goal,theme},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="study-x-data.json";a.click()}
- function clearData(){if(confirm("Clear all local Study X data?")){localStorage.clear();location.reload()}}
- function navigate(p:string){setMobile(false);router.push(p)}
- return <main className="shell">
-  <header className="glass fixed top-3 left-3 right-3 z-50 rounded-2xl"><div className="mx-auto flex h-16 max-w-[1380px] items-center justify-between px-4">
-   <button onClick={()=>navigate("/")} className="flex items-center gap-3 focus-ring"><span className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[.06]"><span className="h-2.5 w-2.5 rounded-full bg-[var(--accent)] shadow-[0_0_18px_rgba(185,242,124,.45)]"/></span><span className="font-semibold tracking-tight">Study X</span></button>
-   <nav className="hidden md:flex items-center gap-1">{nav.slice(0,5).map(([p,l,I])=><button key={p} onClick={()=>navigate(p)} className={`focus-ring rounded-xl px-3 py-2 text-sm transition ${path===p?"bg-white/[.08] text-white":"muted hover:bg-white/[.05] hover:text-white"}`}><span className="flex items-center gap-2"><I size={15}/>{l}</span></button>)}</nav>
-   <div className="flex items-center gap-2"><button onClick={()=>navigate("/settings")} aria-label="Settings" className="hidden sm:grid h-9 w-9 place-items-center rounded-xl text-zinc-400 hover:bg-white/[.06] hover:text-white"><Settings size={17}/></button><button onClick={()=>setMobile(v=>!v)} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[.04] md:hidden">{mobile?<X size={18}/>:<Menu size={18}/>}</button></div>
-  </div>{mobile&&<div className="border-t border-white/10 p-2 md:hidden">{nav.map(([p,l,I])=><button key={p} onClick={()=>navigate(p)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm hover:bg-white/[.06]"><I size={17}/>{l}</button>)}</div>}</header>
-  {path==="/" ? <Landing navigate={navigate}/> : <div className="mx-auto max-w-[1380px] px-4 pb-16 pt-28 md:px-8"><div className="mb-8 flex items-end justify-between"><div><p className="accent mb-2 text-xs font-medium uppercase tracking-[.18em]">Study workspace</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{path==="/timer"?"Focus":path.slice(1).replace("-"," ")}</h1><p className="muted mt-2">A quiet place to do the work.</p></div></div>{path==="/timer"&&<TimerPage {...{mode,chooseMode,seconds,initial,setInitial,setSeconds,running,begin,pause,reset,quick,subject,setSubject,pomoPhase,pomoSession,laps,setLaps,started,todayMin,streak}}/>}{path==="/progress"&&<ProgressPage sessions={sessions} weekly={weekly} subjectStats={subjectStats} todayMin={todayMin} goal={goal} streak={streak}/>} {path==="/tasks"&&<TasksPage tasks={tasks} addTask={addTask} setTasks={setTasks}/>} {path==="/habits"&&<HabitsPage habits={habits} setHabits={setHabits}/>} {path==="/community"&&<Community/>}{path==="/settings"&&<SettingsPage {...{goal,setGoal,theme,setTheme,sound,setSound,volume,setVolume,exportData,clearData}}/>}</div>}
+ useEffect(()=>{
+   if(!running)return;
+   const id=window.setInterval(()=>{
+     setSeconds(v=>{
+       if(mode==="stopwatch")return v+1;
+       if(v<=1){window.clearInterval(id);setRunning(false);complete();return 0}
+       return v-1;
+     });
+   },1000);
+   return()=>window.clearInterval(id);
+ },[running,mode]);
+
+ function complete(){
+   if(mode==="stopwatch"||initial>0){
+    const mins=Math.max(1,Math.round((mode==="stopwatch"?seconds:initial)/60));
+    const ns=sessions+1,nt=today+mins;
+    setSessions(ns);setToday(nt);
+    try{localStorage.setItem("sx-sessions",String(ns));localStorage.setItem("sx-today",String(nt));localStorage.setItem("sx-streak",String(Math.max(1,streak)))}catch{}
+   }
+ }
+ function start(){
+   if(mode==="stopwatch"){setSeconds(0);setRunning(true);return}
+   const n=seconds>0?seconds:1500;
+   setInitial(n);setSeconds(n);setRunning(true);
+ }
+ function reset(){setRunning(false);setSeconds(mode==="stopwatch"?0:initial||0)}
+ function setQuick(n:number){setRunning(false);setInitial(n*60);setSeconds(n*60);setMode("timer")}
+ function setCustom(){
+   const n=(Number(hours)||0)*3600+(Number(minutes)||0)*60+(Number(secs)||0);
+   if(n>0){setRunning(false);setInitial(n);setSeconds(n)}
+ }
+ function choose(m:Mode){
+   if(running)return;
+   setMode(m);
+   if(m==="stopwatch"){setSeconds(0);setInitial(0)}
+   else if(m==="pomodoro"){setSeconds(1500);setInitial(1500)}
+ }
+ const ring=Math.max(0,Math.min(100,initial?seconds/initial*100:0));
+ const modeName=mode==="timer"?"Timer":mode==="clock"?"Clock":mode==="pomodoro"?"Pomodoro":"Stopwatch";
+
+ return <main className="min-h-screen bg-[#050505] text-zinc-100 selection:bg-white/20">
+  <style jsx global>{`
+   *{box-sizing:border-box}body{margin:0;background:#050505;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+   button,input,select{font:inherit}.fade{transition:background .2s,border-color .2s,color .2s,transform .2s}.fade:hover{background:rgba(255,255,255,.07)}
+   .thin{border-color:rgba(255,255,255,.09)}
+   .ring{background:conic-gradient(rgba(255,255,255,.2) ${ring}%,rgba(255,255,255,.055) 0)}
+   @media(max-width:760px){.desktop-nav{display:none}.timer-circle{width:300px!important;height:300px!important}.timer-value{font-size:54px!important}.side-links{display:none}}
+  `}</style>
+
+  <header className="fixed inset-x-0 top-0 z-50 border-b thin bg-[#050505]/90 backdrop-blur-xl">
+   <div className="mx-auto flex h-14 max-w-[1450px] items-center justify-between px-4 md:px-6">
+    <button onClick={()=>setMobile(!mobile)} className="mr-3 grid h-8 w-8 place-items-center rounded-lg text-zinc-500 md:hidden">{mobile?<X size={17}/>:<Menu size={17}/>}</button>
+    <button className="flex items-center gap-2.5 text-sm font-medium tracking-tight">
+      <span className="grid h-7 w-7 place-items-center rounded-full border border-white/20 text-[10px]">SX</span>Study X
+    </button>
+    <nav className="desktop-nav ml-8 flex flex-1 items-center gap-0.5">
+      {["Timer","Progress","Dashboard","Habits","AI Helper","Labels","Groups","Leaderboard","Pricing"].map((x,i)=>
+       <button key={x} className={`fade rounded-lg px-3 py-2 text-[11px] ${i===0?"bg-white/[.06] text-white":"text-zinc-500"}`}>{x}</button>
+      )}
+    </nav>
+    <div className="flex items-center gap-1">
+      <button className="fade rounded-lg border thin px-3 py-1.5 text-[11px] text-zinc-400">Your Stats <Flame size={12} className="ml-1 inline text-amber-300"/></button>
+      <button className="fade grid h-8 w-8 place-items-center rounded-lg text-zinc-500"><Settings size={15}/></button>
+    </div>
+   </div>
+   {mobile&&<div className="border-t thin bg-[#070707] p-2 md:hidden">{["Timer","Progress","Dashboard","Habits","AI Helper","Labels","Groups","Leaderboard","Pricing"].map(x=><button key={x} className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-zinc-400 hover:bg-white/[.05]">{x}</button>)}</div>}
+  </header>
+
+  <section className="mx-auto flex min-h-screen max-w-[1050px] flex-col items-center px-4 pb-16 pt-24">
+    <div className="flex items-center gap-1 rounded-full border thin bg-white/[.015] p-1">
+      {(["timer","clock","pomodoro","stopwatch"] as Mode[]).map(m=>
+       <button key={m} onClick={()=>choose(m)} className={`fade rounded-full px-4 py-2 text-[10px] uppercase tracking-wide ${mode===m?"bg-white/[.09] text-white":"text-zinc-600"}`}>{m}</button>
+      )}
+    </div>
+
+    <div className="mt-8 text-center">
+      <p className="text-[9px] uppercase tracking-[.28em] text-zinc-600">Set duration</p>
+      <div className="mt-5 flex items-center justify-center gap-2">
+       {[["h",hours,setHours],["m",minutes,setMinutes],["s",secs,setSecs]].map(([k,v,set]:any)=>
+        <div key={k} className="text-center">
+          <input value={v} onChange={e=>set(e.target.value.replace(/\\D/g,"").slice(0,2))} className="h-12 w-16 rounded-lg border thin bg-white/[.02] text-center text-xl font-light text-zinc-300 outline-none focus:border-white/25" />
+          <div className="mt-1 text-[8px] uppercase tracking-widest text-zinc-700">{k==="h"?"hours":k==="m"?"minutes":"seconds"}</div>
+        </div>
+       )}
+      </div>
+      <button onClick={setCustom} className="mt-3 rounded-md border thin px-3 py-1.5 text-[9px] text-zinc-500 hover:text-zinc-300">Set custom</button>
+      <div className="mt-5 flex flex-wrap justify-center gap-1.5">
+       {quick.map(n=><button key={n} onClick={()=>setQuick(n)} className="fade rounded-md border thin px-3 py-1.5 text-[9px] text-zinc-500">{n>=60?n/60+"h":n+"m"}</button>)}
+      </div>
+    </div>
+
+    <div className="relative mt-9 grid place-items-center">
+      <div className="timer-circle ring grid h-[380px] w-[380px] place-items-center rounded-full p-[1px]">
+       <div className="grid h-full w-full place-items-center rounded-full bg-[#050505]">
+        <div className="text-center">
+         <div className="mb-3 text-[9px] uppercase tracking-[.3em] text-zinc-600">{running?"In session":modeName}</div>
+         <div className="timer-value text-[68px] font-light tracking-[-.06em] tabular-nums">{format(seconds)}</div>
+         <button onClick={()=>setShowLabels(!showLabels)} className="fade mt-5 rounded-full border thin px-3 py-1.5 text-[9px] text-zinc-500">{label}<ChevronDown size={11} className="ml-1 inline"/></button>
+         {showLabels&&<div className="absolute left-1/2 top-[calc(100%+8px)] z-20 w-44 -translate-x-1/2 rounded-xl border thin bg-[#111]/95 p-1 text-left shadow-2xl backdrop-blur-xl">{labels.map(x=><button key={x} onClick={()=>{setLabel(x);setShowLabels(false)}} className="block w-full rounded-lg px-3 py-2 text-[10px] text-zinc-400 hover:bg-white/[.06]">{x}</button>)}</div>}
+        </div>
+       </div>
+      </div>
+    </div>
+
+    <div className="mt-8 flex items-center gap-2">
+      <button onClick={start} className="fade min-w-36 rounded-full bg-white px-7 py-3 text-[11px] font-medium text-black">{running?<><Pause size={13} className="mr-2 inline"/>Pause</>:<><Play size={13} className="mr-2 inline"/>Start Timer</>}</button>
+      <button onClick={reset} className="fade grid h-10 w-10 place-items-center rounded-full border thin text-zinc-500"><RotateCcw size={14}/></button>
+      <button onClick={()=>setVolume(!volume)} className={`fade grid h-10 w-10 place-items-center rounded-full border thin ${volume?"text-zinc-400":"text-zinc-700"}`}><Volume2 size={14}/></button>
+    </div>
+
+    <p className="mt-6 text-[10px] italic text-zinc-700">The secret of getting ahead is getting started.</p>
+
+    <div className="mt-10 grid w-full max-w-xl grid-cols-3 overflow-hidden rounded-xl border thin bg-white/[.015]">
+      {[["🔥",streak,"DAY STREAK"],["✓",sessions,"SESSIONS"],["◷",today,"MINUTES"]].map(([i,v,l])=><div key={l as string} className="border-r thin p-4 text-center last:border-0"><div className="text-xs text-zinc-600">{i}</div><div className="mt-1 text-lg font-light">{v}</div><div className="mt-1 text-[8px] tracking-[.18em] text-zinc-700">{l}</div></div>)}
+    </div>
+
+    <div className="mt-12 flex flex-wrap justify-center gap-2">
+      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Check size={11} className="mr-1.5 inline"/>Todo List</button>
+      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Timer size={11} className="mr-1.5 inline"/>Focus</button>
+      <button className="fade rounded-full border thin px-4 py-2 text-[9px] text-zinc-500"><Clock3 size={11} className="mr-1.5 inline"/>History</button>
+    </div>
+  </section>
+
+  <footer className="border-t thin px-5 py-8 text-center">
+   <p className="text-[10px] text-zinc-700">Study X · A focused study workspace</p>
+  </footer>
  </main>
 }
-
-function Landing({navigate}:{navigate:(p:string)=>void}){return <div className="mx-auto max-w-[1380px] px-5 pb-20 pt-36 md:px-8 md:pt-44"><div className="grid items-center gap-16 lg:grid-cols-[1.05fr_.95fr]"><section><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-xs text-zinc-300"><span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"/>Built for focused study</div><h1 className="max-w-3xl text-5xl font-semibold leading-[.98] tracking-[-.045em] md:text-7xl">Turn study time into <span className="text-zinc-500">real progress.</span></h1><p className="muted mt-7 max-w-xl text-base leading-7 md:text-lg">Focus on one task, track your sessions, and build a study routine that lasts.</p><div className="mt-9 flex flex-wrap gap-3"><button onClick={()=>navigate("/timer")} className="focus-ring rounded-xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-105 active:scale-[.98]">Start studying <ChevronRight className="ml-1 inline" size={16}/></button><button onClick={()=>navigate("/progress")} className="focus-ring rounded-xl border border-white/10 bg-white/[.04] px-5 py-3 text-sm font-medium transition hover:bg-white/[.07]">View progress</button></div></section><div className="card relative p-5 shadow-2xl shadow-black/20"><div className="mb-5 flex items-center justify-between"><span className="text-xs font-medium text-zinc-400">FOCUS SESSION</span><span className="flex items-center gap-2 text-xs text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"/>Ready</span></div><div className="rounded-2xl border border-white/[.07] bg-black/20 p-8 text-center"><div className="text-xs text-zinc-500">PHYSICS</div><div className="my-6 text-6xl font-medium tracking-[-.05em] md:text-7xl">25:00</div><div className="mx-auto h-1 max-w-xs overflow-hidden rounded-full bg-white/[.06]"><div className="h-full w-[12%] rounded-full bg-[var(--accent)]"/></div><button onClick={()=>navigate("/timer")} className="mt-7 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black">Begin session</button></div></div></div><section className="mt-28 grid gap-4 md:grid-cols-3"><Feature icon={TimerIcon} title="Focus" text="Accurate timer modes with no drifting and no clutter."/><Feature icon={BarChart3} title="Track" text="Keep your study history and see where your time goes."/><Feature icon={Target} title="Improve" text="Goals, habits and streaks turn consistency into a routine."/></section><div className="mt-28 border-t border-white/10 pt-14"><p className="muted text-sm">Everything you need to study consistently</p><div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{["Pomodoro","Stopwatch","Progress","Daily goals","Habits","Tasks"].map(x=><div key={x} className="card flex items-center justify-between p-5"><span className="font-medium">{x}</span><ChevronRight size={17} className="text-zinc-600"/></div>)}</div></div></div>}
-function Feature({icon:Icon,title,text}:{icon:any,title:string,text:string}){return <div className="card p-6"><Icon size={19} className="accent"/><h3 className="mt-7 font-medium">{title}</h3><p className="muted mt-2 text-sm leading-6">{text}</p></div>}
-
-function TimerPage(p:any){const {mode,chooseMode,seconds,initial,setInitial,setSeconds,running,begin,pause,reset,quick,subject,setSubject,pomoPhase,pomoSession,laps,setLaps,started,todayMin,streak}=p;const [custom,setCustom]=useState(false);return <div className="mx-auto max-w-4xl"><div className="card p-5 md:p-8"><div className="flex justify-center"><div className="rounded-xl border border-white/10 bg-black/20 p-1">{(["timer","pomodoro","stopwatch"] as Mode[]).map(m=><button key={m} onClick={()=>chooseMode(m)} className={`rounded-lg px-4 py-2 text-xs capitalize ${mode===m?"bg-white/[.1] text-white":"text-zinc-500"}`}>{m}</button>)}</div></div><div className="mt-10 text-center"><div className="text-xs uppercase tracking-[.18em] text-zinc-500">{mode==="pomodoro"?pomoPhase.toUpperCase():running?"IN SESSION":"READY"}</div><div className="mt-4 text-[clamp(5rem,16vw,10rem)] font-medium leading-none tracking-[-.065em] tabular-nums">{fmt(seconds)}</div>{mode==="pomodoro"&&<p className="muted mt-4 text-sm">Session {pomoSession} / 4</p>}<div className="mx-auto mt-7 h-1 max-w-md overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-[var(--accent)] transition-all duration-500" style={{width:`${mode==="stopwatch"?0:Math.max(0,Math.min(100,100-(seconds/Math.max(1,initial))*100))}%`}}/></div></div><div className="mt-8 flex flex-wrap justify-center gap-2">{[15,25,45,60,120].map(n=><button key={n} onClick={()=>quick(n*60)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-400 transition hover:bg-white/[.06] hover:text-white">{n>=60?n/60+"h":n+"m"}</button>)}<button onClick={()=>setCustom(v=>!v)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-400 hover:bg-white/[.06]">Custom</button></div>{custom&&<div className="mx-auto mt-4 flex max-w-sm gap-2"><input aria-label="Custom minutes" type="number" min="1" max="1440" placeholder="Minutes" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/20" onChange={e=>{const n=Math.max(1,Number(e.target.value)||1)*60;setInitial(n);setSeconds(n)}}/></div>}<div className="mx-auto mt-7 max-w-sm"><label className="mb-2 block text-left text-xs text-zinc-500">What are you studying?</label><select value={subject} onChange={e=>setSubject(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none focus:border-white/20">{subjects.map(s=><option key={s}>{s}</option>)}</select></div><div className="mt-7 flex justify-center gap-3"><button onClick={()=>running?pause():begin(seconds)} className="focus-ring min-w-36 rounded-xl bg-[var(--accent)] px-6 py-3.5 text-sm font-semibold text-black transition hover:brightness-105 active:scale-[.98]">{running?<><Pause className="mr-2 inline" size={16}/>Pause</>:<><Play className="mr-2 inline" size={16}/>Start</>}</button><button onClick={reset} className="focus-ring rounded-xl border border-white/10 px-5 py-3.5 text-sm text-zinc-300 hover:bg-white/[.05]"><RotateCcw className="mr-2 inline" size={16}/>Reset</button>{mode==="stopwatch"&&running&&<button onClick={()=>setLaps((v:number[])=>[seconds,...v])} className="rounded-xl border border-white/10 px-5 py-3.5 text-sm">Lap</button>}</div></div><div className="mt-4 grid gap-4 sm:grid-cols-3"><Mini title="Today" value={fmt(todayMin*60).replace(/^00:/,"")}/><Mini title="Sessions" value={String(p.streak?Math.max(1,Math.round(todayMin/25)):0)}/><Mini title="Streak" value={streak+" days"}/></div>{laps.length>0&&<div className="card mt-4 p-5"><p className="text-sm font-medium">Recent laps</p>{laps.slice(0,6).map((x:number,i:number)=><div key={i} className="muted mt-3 flex justify-between border-b border-white/5 pb-2 text-sm"><span>Lap {i+1}</span><span>{fmt(x)}</span></div>)}</div>}</div>}
-function Mini({title,value}:{title:string,value:string}){return <div className="card p-5"><p className="muted text-xs">{title}</p><p className="mt-2 text-lg font-medium">{value}</p></div>}
-
-function ProgressPage({sessions,weekly,subjectStats,todayMin,goal,streak}:{sessions:Session[],weekly:any[],subjectStats:any[],todayMin:number,goal:number,streak:number}){const max=Math.max(1,...weekly.map(x=>x.value));return <div><div className="grid gap-4 md:grid-cols-4"><Mini title="Today's study time" value={fmt(todayMin*60)}/><Mini title="This week" value={fmt(weekly.reduce((a,x)=>a+x.value,0)*60)}/><Mini title="Current streak" value={streak+" days"}/><Mini title="Sessions completed" value={String(sessions.filter(s=>s.status==="completed").length)}/></div><div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_1fr]"><div className="card p-6"><div className="flex justify-between"><div><h2 className="font-medium">Weekly study</h2><p className="muted mt-1 text-xs">Minutes per day</p></div><BarChart3 className="text-zinc-600" size={19}/></div><div className="mt-8 flex h-56 items-end justify-between gap-3">{weekly.map(x=><div key={x.label} className="flex h-full flex-1 flex-col justify-end gap-2 text-center"><div className="relative flex-1"><div className="absolute bottom-0 left-1/2 w-full max-w-12 -translate-x-1/2 rounded-t-lg bg-white/[.08] transition-all" style={{height:`${Math.max(4,x.value/max*100)}%`}}/><div className="absolute bottom-0 left-1/2 w-full max-w-12 -translate-x-1/2 rounded-t-lg bg-[var(--accent)]/70" style={{height:`${Math.max(2,x.value/max*100)}%`}}/></div><span className="muted text-xs">{x.label}</span></div>)}</div></div><div className="card p-6"><h2 className="font-medium">Today's goal</h2><div className="mt-8 text-3xl font-semibold">{Math.min(todayMin,goal)} <span className="text-base font-normal text-zinc-500">/ {goal} min</span></div><div className="mt-5 h-2 rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-[var(--accent)]" style={{width:`${Math.min(100,todayMin/Math.max(1,goal)*100)}%`}}/></div><p className="muted mt-3 text-xs">{todayMin>=goal?"Goal completed":"Keep going. Small sessions add up."}</p></div></div><div className="card mt-4 p-6"><h2 className="font-medium">Subject breakdown</h2><div className="mt-5 grid gap-4 sm:grid-cols-2">{subjectStats.length?subjectStats.map(x=><div key={x.name}><div className="flex justify-between text-sm"><span>{x.name}</span><span className="muted">{x.value} min</span></div><div className="mt-2 h-1.5 rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-[var(--accent)]" style={{width:`${Math.min(100,x.value/Math.max(...subjectStats.map(y=>y.value))*100)}%`}}/></div></div>):<p className="muted text-sm">Complete a session to see your subjects here.</p>}</div></div></div>}
-function TasksPage({tasks,addTask,setTasks}:{tasks:Task[],addTask:()=>void,setTasks:React.Dispatch<React.SetStateAction<Task[]>>}){return <div className="mx-auto max-w-3xl"><div className="card p-6"><div className="flex items-center justify-between"><div><h2 className="font-medium">Today's tasks</h2><p className="muted mt-1 text-xs">{tasks.filter(x=>x.done).length} completed</p></div><button onClick={addTask} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-black"><Plus className="mr-1 inline" size={15}/>Add task</button></div><div className="mt-6 space-y-2">{tasks.length?tasks.map(t=><div key={t.id} className="flex items-center gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"><button onClick={()=>setTasks(v=>v.map(x=>x.id===t.id?{...x,done:!x.done}:x))} className={`grid h-5 w-5 place-items-center rounded-md border ${t.done?"border-[var(--accent)] bg-[var(--accent)] text-black":"border-white/15"}`}>{t.done&&<Check size={13}/>}</button><span className={`flex-1 text-sm ${t.done?"text-zinc-600 line-through":"text-zinc-200"}`}>{t.text}</span>{t.subject&&<span className="muted text-xs">{t.subject}</span>}<button onClick={()=>setTasks(v=>v.filter(x=>x.id!==t.id))} aria-label="Delete task" className="text-zinc-600 hover:text-zinc-300"><Trash2 size={15}/></button></div>):<div className="muted rounded-xl border border-dashed border-white/10 p-10 text-center text-sm">No tasks yet. Add one small thing you want to finish today.</div>}</div></div></div>}
-function HabitsPage({habits,setHabits}:{habits:Habit[],setHabits:React.Dispatch<React.SetStateAction<Habit[]>>}){const names=["Study Physics","Solve 20 questions","Read textbook","Revise formulas"];return <div className="grid gap-4 lg:grid-cols-[1fr_1.5fr]"><div className="card p-6"><h2 className="font-medium">Your habits</h2><p className="muted mt-1 text-xs">Keep recurring study actions visible.</p><div className="mt-5 space-y-2">{habits.map(h=><div key={h.id} className="flex items-center gap-3 rounded-xl border border-white/[.06] p-3"><Target size={16} className="accent"/><span className="flex-1 text-sm">{h.name}</span><button onClick={()=>setHabits(v=>v.filter(x=>x.id!==h.id))}><Trash2 size={15} className="text-zinc-600"/></button></div>)}<button onClick={()=>{const name=prompt("Habit name");if(name?.trim())setHabits(v=>[...v,{id:crypto.randomUUID(),name:name.trim(),days:[1,2,3,4,5],done:[]}])}} className="mt-2 w-full rounded-xl border border-dashed border-white/10 p-3 text-sm text-zinc-400 hover:bg-white/[.03]"><Plus className="mr-1 inline" size={15}/>Create habit</button></div></div><div className="card p-6"><h2 className="font-medium">Weekly rhythm</h2><div className="mt-6 space-y-6">{(habits.length?habits:[{id:"demo",name:"Start a habit",days:[],done:[]}]).map(h=><div key={h.id}><div className="mb-3 flex justify-between text-sm"><span>{h.name}</span><span className="muted text-xs">MON — SUN</span></div><div className="grid grid-cols-7 gap-2">{["M","T","W","T","F","S","S"].map((d,i)=><button key={i} onClick={()=>h.id!=="demo"&&setHabits(v=>v.map(x=>x.id===h.id?{...x,done:x.done.includes(String(i))?x.done.filter(a=>a!==String(i)):[...x.done,String(i)]}:x))} className={`grid aspect-square place-items-center rounded-lg border text-xs ${h.done.includes(String(i))?"border-[var(--accent)] bg-[var(--accent)] text-black":"border-white/[.08] text-zinc-600"}`}>{d}</button>)}</div></div>)}</div></div></div>}
-function Community(){return <div className="grid gap-4 lg:grid-cols-2"><div className="card p-6"><div className="flex items-center justify-between"><div><h2 className="font-medium">Study groups</h2><p className="muted mt-1 text-xs">Demo community spaces — not live accounts.</p></div><button className="rounded-xl border border-white/10 px-3 py-2 text-xs">Create group</button></div><div className="mt-5 space-y-2">{[["MHT-CET 2027","Physics Grind","12 members"],["Boards 2027","Daily Revision","28 members"],["CET Maths","Problem Solvers","19 members"]].map(x=><div key={x[0]} className="rounded-xl border border-white/[.06] p-4"><div className="font-medium text-sm">{x[0]}</div><div className="muted mt-1 text-xs">{x[1]} · {x[2]}</div></div>)}</div></div><div className="card p-6"><div className="flex items-center gap-2"><Trophy className="accent" size={18}/><h2 className="font-medium">Leaderboard</h2></div><p className="muted mt-1 text-xs">Fictional demo data. Your local stats stay private.</p><div className="mt-5 space-y-1">{[["01","Aarav","18h 42m"],["02","Meera","16h 10m"],["03","Kabir","14h 58m"],["04","Ishita","12h 31m"]].map(x=><div key={x[0]} className="flex items-center gap-4 rounded-xl p-3 hover:bg-white/[.03]"><span className="muted w-5 text-xs">{x[0]}</span><span className="flex-1 text-sm">{x[1]}</span><span className="text-xs text-zinc-400">{x[2]}</span></div>)}</div><div className="mt-5 rounded-xl border border-white/[.06] p-4 text-center text-xs text-zinc-500">Students studying now · demo indicator</div></div></div>}
-function SettingsPage(p:any){return <div className="mx-auto max-w-3xl space-y-4"><div className="card p-6"><h2 className="font-medium">Daily goal</h2><p className="muted mt-1 text-xs">Your target is stored only on this device.</p><div className="mt-5 flex flex-wrap gap-2">{[60,120,180,240].map(n=><button key={n} onClick={()=>p.setGoal(n)} className={`rounded-lg border px-3 py-2 text-xs ${p.goal===n?"border-[var(--accent)] bg-[var(--accent)]/10 text-white":"border-white/10 text-zinc-400"}`}>{n/60}h</button>)}</div></div><div className="card p-6"><h2 className="font-medium">Appearance</h2><div className="mt-4 flex flex-wrap gap-2">{["Obsidian","Slate","Midnight","Soft Gray","Aurora"].map((x:string)=><button key={x} onClick={()=>p.setTheme(x)} className={`rounded-lg border px-3 py-2 text-xs ${p.theme===x?"border-[var(--accent)] bg-[var(--accent)]/10":"border-white/10 text-zinc-400"}`}>{x}</button>)}</div></div><div className="card p-6"><h2 className="font-medium">Sound</h2><div className="mt-4 flex items-center justify-between"><span className="text-sm">Timer completion sound</span><button onClick={()=>p.setSound(!p.sound)} className={`h-6 w-11 rounded-full p-1 ${p.sound?"bg-[var(--accent)]":"bg-white/10"}`}><span className={`block h-4 w-4 rounded-full bg-white transition ${p.sound?"translate-x-5":"translate-x-0"}`}/></button></div><div className="mt-4"><label className="muted text-xs">Volume</label><input aria-label="Volume" className="mt-2 w-full accent-[var(--accent)]" type="range" min="0" max="1" step=".05" value={p.volume} onChange={e=>p.setVolume(Number(e.target.value))}/></div></div><div className="card p-6"><h2 className="font-medium">Data</h2><div className="mt-4 flex flex-wrap gap-2"><button onClick={p.exportData} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs">Export sessions</button><button onClick={p.clearData} className="rounded-xl border border-red-500/20 px-4 py-2.5 text-xs text-red-300">Clear local data</button></div></div></div>}
