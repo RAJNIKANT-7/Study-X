@@ -125,6 +125,7 @@ function Progress(){
   const [taskText,setTaskText]=useState("");
   const [selected,setSelected]=useState<string|null>(null);
   const [showPicker,setShowPicker]=useState(false);
+  const active=pathways.find(p=>p.id===selected);
 
   useEffect(()=>{
     let alive=true;
