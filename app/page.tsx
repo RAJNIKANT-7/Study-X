@@ -31,27 +31,90 @@ function fmt(n:number){const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60
 function Timer(){
  const [mode,setMode]=useState<Mode>("Timer"),[total,setTotal]=useState(1500),[left,setLeft]=useState(1500),[run,setRun]=useState(false),[label,setLabel]=useState("Choose subject"),[open,setOpen]=useState(false),[custom,setCustom]=useState({h:"",m:"",s:""}),[customOpen,setCustomOpen]=useState(false);
  const [tasks,setTasks]=useState<{id:number;text:string;done:boolean}[]>([]),[taskText,setTaskText]=useState("");
- const ref=useRef<ReturnType<typeof setInterval>|null>(null);
+ const startedAtRef=useRef<number|null>(null);
+ const lastTickRef=useRef<number|null>(null);
+ const lastPersistRef=useRef<number>(0);
+ const lastRunRef=useRef(false);
+
  useEffect(()=>{try{const saved=localStorage.getItem("study-x-tasks");if(saved)setTasks(JSON.parse(saved))}catch{}},[]);
- useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync");if(!r.ok)return;const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
- useEffect(()=>{let stopped=false;const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok)return;const x=await r.json();if(x.data?.progress){localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));}if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};const push=async()=>{try{const a=await fetch("/api/auth");if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}};const id=setInterval(()=>{if(!stopped){push();pull()}},3000);return()=>{stopped=true;clearInterval(id)}},[tasks]);
- useEffect(()=>{const push=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}};const id=setInterval(push,15000);return()=>clearInterval(id)},[tasks]);
+ useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth");const auth=await a.json();if(!auth.loggedIn)return;const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok)return;const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}}catch{}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
  useEffect(()=>{try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}},[tasks]);
- useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>{recordStudySecond();setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){try{const key="study-x-progress";const d=JSON.parse(localStorage.getItem(key)||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");d.sessions=(d.sessions||0)+1;localStorage.setItem(key,JSON.stringify(d))}catch{}setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1});},1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
+
+ async function persistProgress(data:any){try{localStorage.setItem("study-x-progress",JSON.stringify(data));const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:data,tasks})})}catch{}}
+
+ function applyElapsed(now=Date.now()){
+   if(!lastTickRef.current)return;
+   const previous=lastTickRef.current;
+   const elapsed=Math.max(0,Math.floor((now-previous)/1000));
+   if(!elapsed)return;
+   lastTickRef.current=previous+elapsed*1000;
+   try{
+     const key="study-x-progress";
+     const raw=localStorage.getItem(key);
+     const data=raw?JSON.parse(raw):{seconds:0,sessions:0,daily:{}};
+     data.daily=data.daily||{};
+     let remaining=elapsed;
+     let day=new Date(previous).toISOString().slice(0,10);
+     const used=data.daily[day]||0;
+     const allowed=Math.max(0,20*3600-used);
+     const add=Math.min(remaining,allowed);
+     data.seconds=(data.seconds||0)+add;
+     data.daily[day]=used+add;
+     if(add>0)localStorage.setItem(key,JSON.stringify(data));
+     if(now-lastPersistRef.current>=5000){lastPersistRef.current=now;void persistProgress(data);}
+     if(add<remaining)setRun(false);
+   }catch{}
+ }
+
+ useEffect(()=>{
+   if(run){
+     const now=Date.now();
+     if(!startedAtRef.current)startedAtRef.current=now;
+     if(!lastTickRef.current)lastTickRef.current=now;
+     lastRunRef.current=true;
+     const id=setInterval(()=>{applyElapsed();setLeft(v=>{
+       if(mode==="Stopwatch")return v+1;
+       const elapsed=Math.max(0,Math.floor((Date.now()-(startedAtRef.current||Date.now()))/1000));
+       const next=Math.max(0,total-elapsed);
+       if(next===0){
+         try{const key="study-x-progress";const d=JSON.parse(localStorage.getItem(key)||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");d.sessions=(d.sessions||0)+1;localStorage.setItem(key,JSON.stringify(d));void persistProgress(d)}catch{}
+         setRun(false);
+       }
+       return next;
+     })},250);
+     return()=>clearInterval(id);
+   }
+   if(lastRunRef.current){
+     applyElapsed();
+     lastRunRef.current=false;
+     startedAtRef.current=null;
+     lastTickRef.current=null;
+   }
+ },[run,mode,total]);
+
+ useEffect(()=>{
+   const onVisibility=()=>{if(document.visibilityState==="visible"){applyElapsed();if(run){const now=Date.now();if(startedAtRef.current){const elapsed=Math.max(0,Math.floor((now-startedAtRef.current)/1000));setLeft(mode==="Stopwatch"?elapsed:Math.max(0,total-elapsed));}}}};
+   const onPageShow=()=>{applyElapsed();if(run){const now=Date.now();if(startedAtRef.current)setLeft(mode==="Stopwatch"?Math.max(0,Math.floor((now-startedAtRef.current)/1000)):Math.max(0,total-Math.floor((now-startedAtRef.current)/1000)));}};
+   document.addEventListener("visibilitychange",onVisibility);
+   window.addEventListener("pageshow",onPageShow);
+   return()=>{document.removeEventListener("visibilitychange",onVisibility);window.removeEventListener("pageshow",onPageShow)};
+ },[run,mode,total]);
+
+ useEffect(()=>{const id=setInterval(()=>{if(run)applyElapsed();},1000);return()=>clearInterval(id)},[run]);
+
  const pct=mode==="Stopwatch"?100:total?((total-left)/total)*100:0;
  function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
  function apply(){const n=Math.min(20*3600,(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0));if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
- function toggle(){if(mode==="Stopwatch"){setRun(v=>!v);return}if(!total)return;if(!left)setLeft(total);setRun(v=>!v)}
+ function toggle(){if(mode==="Stopwatch"){if(!run){startedAtRef.current=Date.now()-(left*1000);lastTickRef.current=Date.now();}setRun(v=>!v);return}if(!total)return;if(!left){setLeft(total);startedAtRef.current=Date.now();lastTickRef.current=Date.now();}else if(!run){const elapsed=total-left;startedAtRef.current=Date.now()-elapsed*1000;lastTickRef.current=Date.now();}setRun(v=>!v)}
+ function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;setLeft(mode==="Stopwatch"?0:total)}
  function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
- async function saveNow(){try{const a=await fetch("/api/auth");if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
-
-  function recordStudySecond(){try{const key="study-x-progress";const raw=localStorage.getItem(key);const data=raw?JSON.parse(raw):{seconds:0,sessions:0,daily:{}};const day=new Date().toISOString().slice(0,10);data.daily=data.daily||{};const used=data.daily[day]||0;if(used>=20*3600){setRun(false);return}data.seconds=(data.seconds||0)+1;data.daily[day]=used+1;localStorage.setItem(key,JSON.stringify(data));if(used+1>=20*3600)setRun(false);void fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:data,tasks})})}catch{}}
+ async function saveNow(){applyElapsed();try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
  const done=tasks.filter(t=>t.done).length;
  return <main className="timer-page">
   <div className="timer-intro"><span className="section-kicker">FOCUS / 01</span><h1>Make time for what matters.</h1><p>A quiet workspace for deliberate study.</p></div>
   <div className="mode-tabs glass-pill">{modes.map(m=><button key={m} onClick={()=>choose(m)} className={m===mode?"active-pill":""}>{m}</button>)}</div>
-  <div className="timer-workspace"><aside className="session-side glass-panel"><div className="side-label">SESSION</div><div className="side-title">Choose your pace.</div><div className="preset-stack">{presets.map(n=><button key={n} onClick={()=>preset(n)} className={total===n*60&&mode==="Timer"?"selected-preset":""}><span>{n>=60?n/60+"h":n+"m"}</span><small>{n===25?"recommended":n===50?"deep focus":"quick session"}</small></button>)}</div><button className={"custom-trigger "+(customOpen?"open":"")} onClick={()=>setCustomOpen(v=>!v)}><span><b>Custom time</b><small>Set your own duration</small></span><i>{customOpen?"−":"+"}</i></button>{customOpen&&<div className="custom-box"><div className="custom-fields">{(["h","m","s"] as const).map(k=><label key={k}><input aria-label={k+" duration"} value={custom[k]} maxLength={2} inputMode="numeric" max={k==="h"?"20":"59"} placeholder="00" onChange={e=>setCustom({...custom,[k]:e.target.value.replace(/\D/g,"")})}/><span>{k}</span></label>)}</div><button onClick={apply}>Apply duration</button></div>}<div className="side-subject"><span>SUBJECT</span><button className="label-button" onClick={()=>setOpen(v=>!v)}>{label}<span>⌄</span></button>{open&&<div className="label-menu">{["Mathematics","Physics","Chemistry","Computer Science","Biology"].map(x=><button key={x} onClick={()=>{setLabel(x);setOpen(false)}}>{x}</button>)}</div>}</div></aside><div className="timer-center"><section className="clock-card glass-panel"><div className="clock-top"><span className="timer-mode-label">{run?"SESSION ACTIVE":mode.toUpperCase()}</span><span className="clock-status">{Math.round(pct)}% complete</span></div><div className="big-clock">{fmt(left)}</div><div className="clock-bottom"><div className="time-units"><span>HOURS</span><span>MINUTES</span><span>SECONDS</span></div></div><div className="clock-progress"><div style={{width:Math.min(100,Math.max(0,pct))+"%"}}/></div></section><div className="controls"><button className="round-control" aria-label="Reset" onClick={()=>{setRun(false);setLeft(mode==="Stopwatch"?0:total)}}>↺</button><button className="start-button" onClick={toggle}>{run?"Pause":!left&&total?"Restart":"Start session"}</button><button className="round-control save-control" aria-label="Save study progress" onClick={saveNow}>✓</button></div><div className="bottom-tools"><button onClick={()=>document.getElementById("task-list")?.scrollIntoView({behavior:"smooth"})}>Tasks</button><button onClick={saveNow}>Save progress</button><button>Ambient</button><button>Study room</button></div></div><section id="task-list" className="task-panel glass-panel"><div className="task-heading"><div><span className="section-kicker">WORKSPACE / 03</span><h2>Today&apos;s tasks</h2></div><span className="task-count">{done} / {tasks.length} complete</span></div><form className="task-add" onSubmit={e=>{e.preventDefault();addTask()}}><input value={taskText} onChange={e=>setTaskText(e.target.value)} placeholder="Add a study task..." aria-label="Add a study task"/><button type="submit">ADD</button></form><div className="task-items">{tasks.length===0?<div className="task-empty">No tasks yet. Add one above and keep your session focused.</div>:tasks.map(t=><div className={"task-item "+(t.done?"done":"")} key={t.id}><button type="button" className="task-check" aria-label={t.done?"Mark incomplete":"Mark complete"} onClick={()=>setTasks(ts=>ts.map(x=>x.id===t.id?{...x,done:!x.done}:x))}>{t.done?"✓":""}</button><span>{t.text}</span><button type="button" className="task-delete" aria-label="Delete task" onClick={()=>setTasks(ts=>ts.filter(x=>x.id!==t.id))}>×</button></div>)}</div></section></div><div className="timer-meta"><span>25:00 recommended</span><span>Session 01</span><span>Distraction-free</span></div>
+  <div className="timer-workspace"><aside className="session-side glass-panel"><div className="side-label">SESSION</div><div className="side-title">Choose your pace.</div><div className="preset-stack">{presets.map(n=><button key={n} onClick={()=>preset(n)} className={total===n*60&&mode==="Timer"?"selected-preset":""}><span>{n>=60?n/60+"h":n+"m"}</span><small>{n===25?"recommended":n===50?"deep focus":"quick session"}</small></button>)}</div><button className={"custom-trigger "+(customOpen?"open":"")} onClick={()=>setCustomOpen(v=>!v)}><span><b>Custom time</b><small>Set your own duration</small></span><i>{customOpen?"−":"+"}</i></button>{customOpen&&<div className="custom-box"><div className="custom-fields">{(["h","m","s"] as const).map(k=><label key={k}><input aria-label={k+" duration"} value={custom[k]} maxLength={2} inputMode="numeric" max={k==="h"?"20":"59"} placeholder="00" onChange={e=>setCustom({...custom,[k]:e.target.value.replace(/\D/g,"")})}/><span>{k}</span></label>)}</div><button onClick={apply}>Apply duration</button></div>}<div className="side-subject"><span>SUBJECT</span><button className="label-button" onClick={()=>setOpen(v=>!v)}>{label}<span>⌄</span></button>{open&&<div className="label-menu">{["Mathematics","Physics","Chemistry","Computer Science","Biology"].map(x=><button key={x} onClick={()=>{setLabel(x);setOpen(false)}}>{x}</button>)}</div>}</div></aside><div className="timer-center"><section className="clock-card glass-panel"><div className="clock-top"><span className="timer-mode-label">{run?"SESSION ACTIVE":mode.toUpperCase()}</span><span className="clock-status">{Math.round(pct)}% complete</span></div><div className="big-clock">{fmt(left)}</div><div className="clock-bottom"><div className="time-units"><span>HOURS</span><span>MINUTES</span><span>SECONDS</span></div></div><div className="clock-progress"><div style={{width:Math.min(100,Math.max(0,pct))+"%"}}/></div></section><div className="controls"><button className="round-control" aria-label="Reset" onClick={resetTimer}>↺</button><button className="start-button" onClick={toggle}>{run?"Pause":!left&&total?"Restart":"Start session"}</button><button className="round-control save-control" aria-label="Save study progress" onClick={saveNow}>✓</button></div><div className="bottom-tools"><button onClick={()=>document.getElementById("task-list")?.scrollIntoView({behavior:"smooth"})}>Tasks</button><button onClick={saveNow}>Save progress</button><button>Ambient</button><button>Study room</button></div></div><section id="task-list" className="task-panel glass-panel"><div className="task-heading"><div><span className="section-kicker">WORKSPACE / 03</span><h2>Today&apos;s tasks</h2></div><span className="task-count">{done} / {tasks.length} complete</span></div><form className="task-add" onSubmit={e=>{e.preventDefault();addTask()}}><input value={taskText} onChange={e=>setTaskText(e.target.value)} placeholder="Add a study task..." aria-label="Add a study task"/><button type="submit">ADD</button></form><div className="task-items">{tasks.length===0?<div className="task-empty">No tasks yet. Add one above and keep your session focused.</div>:tasks.map(t=><div className={"task-item "+(t.done?"done":"")} key={t.id}><button type="button" className="task-check" aria-label={t.done?"Mark incomplete":"Mark complete"} onClick={()=>setTasks(ts=>ts.map(x=>x.id===t.id?{...x,done:!x.done}:x))}>{t.done?"✓":""}</button><span>{t.text}</span><button type="button" className="task-delete" aria-label="Delete task" onClick={()=>setTasks(ts=>ts.filter(x=>x.id!==t.id))}>×</button></div>)}</div></section></div><div className="timer-meta"><span>25:00 recommended</span><span>Session 01</span><span>Distraction-free</span></div>
  </main>
 }
 function PathwayProgress(){
