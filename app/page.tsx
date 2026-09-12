@@ -54,7 +54,7 @@ function Timer(){
  },[]);
  const tasksHydratedRef=useRef(false);
  const tasksSaveTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
- useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth",{cache:"no-store"});const auth=await a.json();if(!auth.loggedIn){tasksHydratedRef.current=true;return}const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok){tasksHydratedRef.current=true;return}const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}tasksHydratedRef.current=true}catch{tasksHydratedRef.current=true}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
+ useEffect(()=>{const pull=async()=>{try{const a=await fetch("/api/auth",{cache:"no-store"});const auth=await a.json();if(!auth.loggedIn){tasksHydratedRef.current=true;return}const r=await fetch("/api/sync",{cache:"no-store"});if(!r.ok){tasksHydratedRef.current=true;return}const x=await r.json();if(x.data?.progress)localStorage.setItem("study-x-progress",JSON.stringify(x.data.progress));if(Array.isArray(x.data?.tasks)){setTasks(x.data.tasks);localStorage.setItem("study-x-tasks",JSON.stringify(x.data.tasks))}if(Object.prototype.hasOwnProperty.call(x.data||{},"activeTimer")){const t=x.data.activeTimer;if(t?.run&&t.startedAt&&t.total!=null){const now=Date.now(),started=Number(t.startedAt),elapsedBefore=Number(t.elapsedBefore)||0,tm=t.mode||"Timer",tt=Number(t.total)||1500;startedAtRef.current=started;lastTickRef.current=now;setMode(tm);setTotal(tt);setLeft(tm==="Stopwatch"?elapsedBefore+Math.floor((now-started)/1000):Math.max(0,tt-elapsedBefore-Math.floor((now-started)/1000)));try{sessionStorage.setItem("study-x-timer",JSON.stringify(t))}catch{}setRun(true)}else if(t===null){try{sessionStorage.removeItem("study-x-timer")}catch{}setRun(false);startedAtRef.current=null;lastTickRef.current=null}}tasksHydratedRef.current=true}catch{tasksHydratedRef.current=true}};pull();window.addEventListener("studyx-login",pull);return()=>window.removeEventListener("studyx-login",pull)},[]);
  useEffect(()=>{
    try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}
    if(!tasksHydratedRef.current)return;
@@ -93,6 +93,8 @@ function Timer(){
      if(add<remaining)setRun(false);
    }catch{}
  }
+
+ useEffect(()=>{if(!run)return;const syncActive=async()=>{try{const a=await fetch("/api/auth",{cache:"no-store"});const auth=await a.json();if(!auth.loggedIn)return;const elapsedBefore=mode==="Stopwatch"?left:Math.max(0,total-left);const activeTimer={run:true,mode,total,startedAt:startedAtRef.current||Date.now(),elapsedBefore};await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({activeTimer})})}catch{}};syncActive();const id=setInterval(syncActive,5000);return()=>clearInterval(id)},[run,mode,total]);
 
  useEffect(()=>{
    timerStateRef.current={...timerStateRef.current,run,mode,total,startedAt:startedAtRef.current,elapsedBefore:Math.max(0,total-left)};
@@ -137,9 +139,10 @@ function Timer(){
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
  function apply(){const n=Math.min(20*3600,(+custom.h||0)*3600+(+custom.m||0)*60+(+custom.s||0));if(n){setMode("Timer");setTotal(n);setLeft(n);setRun(false)}}
  function toggle(){if(mode==="Stopwatch"){if(!run){startedAtRef.current=Date.now()-(left*1000);lastTickRef.current=Date.now();}setRun(v=>!v);return}if(!total)return;if(!left){setLeft(total);startedAtRef.current=Date.now();lastTickRef.current=Date.now();}else if(!run){const elapsed=total-left;startedAtRef.current=Date.now()-elapsed*1000;lastTickRef.current=Date.now();}setRun(v=>!v)}
- function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;try{sessionStorage.removeItem("study-x-timer")}catch{}setLeft(mode==="Stopwatch"?0:total)}
+ function resetTimer(){setRun(false);startedAtRef.current=null;lastTickRef.current=null;try{sessionStorage.removeItem("study-x-timer")}catch{}setLeft(mode==="Stopwatch"?0:total);void clearActiveTimerCloud()}
  function addTask(){const v=taskText.trim();if(!v)return;setTasks(t=>[...t,{id:Date.now(),text:v,done:false}]);setTaskText("")}
- async function saveNow(){applyElapsed();try{sessionStorage.removeItem("study-x-timer")}catch{}setRun(false);try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
+ async function clearActiveTimerCloud(){try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({activeTimer:null})})}catch{}}
+ async function saveNow(){applyElapsed();try{sessionStorage.removeItem("study-x-timer")}catch{}setRun(false);void clearActiveTimerCloud();try{const a=await fetch("/api/auth",{cache:"no-store"});if(!(await a.json()).loggedIn)return;const progress=JSON.parse(localStorage.getItem("study-x-progress")||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({progress,tasks})})}catch{}}
  const done=tasks.filter(t=>t.done).length;
  return <main className="timer-page">
   <div className="timer-intro"><span className="section-kicker">FOCUS / 01</span><h1>Make time for what matters.</h1><p>A quiet workspace for deliberate study.</p></div>
