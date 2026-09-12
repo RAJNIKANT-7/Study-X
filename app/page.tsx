@@ -34,7 +34,7 @@ function Timer(){
  const ref=useRef<ReturnType<typeof setInterval>|null>(null);
  useEffect(()=>{try{const saved=localStorage.getItem("study-x-tasks");if(saved)setTasks(JSON.parse(saved))}catch{}},[]);
  useEffect(()=>{try{localStorage.setItem("study-x-tasks",JSON.stringify(tasks))}catch{}},[tasks]);
- useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>{recordStudySecond();setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1});},1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
+ useEffect(()=>{if(ref.current)clearInterval(ref.current);if(!run)return;ref.current=setInterval(()=>{recordStudySecond();setLeft(v=>{if(mode!=="Stopwatch"&&v<=1){try{const key="study-x-progress";const d=JSON.parse(localStorage.getItem(key)||"{\"seconds\":0,\"sessions\":0,\"daily\":{}}");d.sessions=(d.sessions||0)+1;localStorage.setItem(key,JSON.stringify(d))}catch{}setRun(false);return 0}return mode==="Stopwatch"?v+1:v-1});},1000);return()=>{if(ref.current)clearInterval(ref.current)}},[run,mode]);
  const pct=mode==="Stopwatch"?100:total?((total-left)/total)*100:0;
  function choose(m:Mode){setRun(false);setMode(m);if(m==="Pomodoro"){setTotal(1500);setLeft(1500)}else if(m==="Focus"){setTotal(3000);setLeft(3000)}else if(m==="Stopwatch"){setTotal(0);setLeft(0)}else{setTotal(1500);setLeft(1500)}}
  function preset(n:number){setMode("Timer");setTotal(n*60);setLeft(n*60);setRun(false)}
