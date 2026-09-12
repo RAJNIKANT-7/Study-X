@@ -28,18 +28,6 @@ const achievements=[
 function pad(n:number){return String(n).padStart(2,"0")}
 function fmt(n:number){const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?pad(h)+":"+pad(m)+":"+pad(s):pad(m)+":"+pad(s)}
 
-function DaysCounter(){
- const [days,setDays]=useState(90);
- useEffect(()=>{
-   const startKey="studyx-mhtcet-countdown-start";
-   let start=localStorage.getItem(startKey);
-   if(!start){start=new Date().toISOString().slice(0,10);localStorage.setItem(startKey,start)}
-   const calc=()=>{const s=new Date(start+"T00:00:00");const today=new Date();today.setHours(0,0,0,0);setDays(Math.max(0,90-Math.floor((today.getTime()-s.getTime())/86400000)))};
-   calc();const id=setInterval(calc,60000);return()=>clearInterval(id)
- },[]);
- return <aside className="days-counter glass-panel" aria-label="MHT-CET countdown"><div className="days-ring"><div><strong>{days}</strong><span>DAYS</span></div></div><div className="days-copy"><span>MHT-CET</span><b>Countdown</b><small>{days?days+" days to stay consistent.":"Keep going — your countdown is complete."}</small></div></aside>
-}
-
 function Timer(){
  const [mode,setMode]=useState<Mode>("Timer"),[total,setTotal]=useState(1500),[left,setLeft]=useState(1500),[run,setRun]=useState(false),[label,setLabel]=useState("Choose subject"),[open,setOpen]=useState(false),[custom,setCustom]=useState({h:"",m:"",s:""}),[customOpen,setCustomOpen]=useState(false);
  const [tasks,setTasks]=useState<{id:number;text:string;done:boolean}[]>([]),[taskText,setTaskText]=useState("");
